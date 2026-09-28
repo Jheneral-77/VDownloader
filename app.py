@@ -1011,28 +1011,25 @@ initialize_analytics()
 # =========================================================
 
 def get_ydl_options():
-
     return {
-
         "quiet": True,
-
         "no_warnings": True,
-
         "noplaylist": True,
-
         "retries": 3,
-
         "fragment_retries": 3,
-
         "impersonate": IMPERSONATE_TARGET,
-
+        "extractor_args": {
+            "youtube": {
+                "pot_server": [
+                    "bgutil:http://127.0.0.1:4416"
+                ]
+            }
+        },
         "http_headers": {
             "User-Agent": USER_AGENT
         },
-
         "ffmpeg_location": FFMPEG_LOCATION
     }
-
 
 def extract_quality(
     format_id,
