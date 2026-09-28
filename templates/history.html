@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+
+<html lang="en">
+
+<head>
+
+
+<meta charset="UTF-8">
+
+<meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0"
+>
+
+<title>History | VDownloader</title>
+
+<link
+    rel="stylesheet"
+    href="{{ url_for('static', filename='history.css') }}"
+>
+
+<script
+    src="{{ url_for('static', filename='theme.js') }}"
+></script>
+
+
+</head>
+
+<body>
+
+<div class="dashboard">
+
+
+<aside class="sidebar">
+
+    <div class="brand">
+
+        <div class="brand-name">
+            VDownloader
+        </div>
+
+        <div class="brand-section">
+            History
+        </div>
+
+    </div>
+
+    <nav class="navigation">
+
+        <a
+            href="/overview"
+            class="nav-link"
+        >
+            Overview
+        </a>
+
+        <a
+            href="/analytics"
+            class="nav-link"
+        >
+            Analytics
+        </a>
+
+        <a
+            href="/"
+            class="nav-link"
+        >
+            Downloader
+        </a>
+
+        <a
+            href="/history"
+            class="nav-link active"
+        >
+            History
+        </a>
+
+        <a
+            href="/settings"
+            class="nav-link"
+        >
+            Settings
+        </a>
+
+    </nav>
+
+</aside>
+
+
+<main class="main">
+
+    <header class="header">
+
+        <div>
+
+            <h1>
+                Download History
+            </h1>
+
+            <p>
+                View and manage your previous downloads.
+            </p>
+
+        </div>
+
+        <button
+            id="clearHistoryButton"
+            class="clear-button"
+        >
+            Clear History
+        </button>
+
+    </header>
+
+
+    <section class="history-panel">
+
+        <div class="history-header">
+
+            <div>
+                <h2>
+                    Recent Downloads
+                </h2>
+
+                <span id="historyCount">
+                    Loading history...
+                </span>
+            </div>
+
+            <button
+                id="refreshHistoryButton"
+                class="refresh-button"
+            >
+                Refresh
+            </button>
+
+        </div>
+
+
+        <div
+            id="historyContainer"
+            class="history-container"
+        >
+
+            <div class="loading">
+                Loading download history...
+            </div>
+
+        </div>
+
+    </section>
+
+</main>
+
+
+</div>
+
+<div
+    id="confirmModal"
+    class="modal hidden"
+>
+
+
+<div class="modal-box">
+
+    <h3>
+        Clear Download History?
+    </h3>
+
+    <p>
+        This will remove all completed history records.
+    </p>
+
+    <div class="modal-actions">
+
+        <button
+            id="cancelClearButton"
+            class="cancel-button"
+        >
+            Cancel
+        </button>
+
+        <button
+            id="confirmClearButton"
+            class="confirm-button"
+        >
+            Clear History
+        </button>
+
+    </div>
+
+</div>
+
+
+</div>
+
+<script
+    src="{{ url_for('static', filename='history.js') }}"
+></script>
+
+</body>
+
+</html>

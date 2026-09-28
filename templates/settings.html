@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+
+<html lang="en">
+
+<head>
+
+
+<meta charset="UTF-8">
+
+<meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0"
+>
+
+<title>Settings | VDownloader</title>
+
+<link
+    rel="stylesheet"
+    href="{{ url_for('static', filename='settings.css') }}"
+>
+
+<script
+    src="{{ url_for('static', filename='theme.js') }}"
+></script>
+
+
+</head>
+
+<body>
+
+
+<div class="dashboard">
+
+    <aside class="sidebar">
+
+        <div class="brand">
+
+            <div class="brand-name">
+                VDownloader
+            </div>
+
+            <div class="brand-section">
+                Settings
+            </div>
+
+        </div>
+
+
+        <nav class="navigation">
+
+            <a
+                href="/overview"
+                class="nav-link"
+            >
+                Overview
+            </a>
+
+            <a
+                href="/analytics"
+                class="nav-link"
+            >
+                Analytics
+            </a>
+
+            <a
+                href="/"
+                class="nav-link"
+            >
+                Downloader
+            </a>
+
+            <a
+                href="/history"
+                class="nav-link"
+            >
+                History
+            </a>
+
+            <a
+                href="/settings"
+                class="nav-link active"
+            >
+                Settings
+            </a>
+
+        </nav>
+
+    </aside>
+
+
+    <main class="main">
+
+        <header class="header">
+
+            <div>
+
+                <h1>
+                    Settings
+                </h1>
+
+                <p>
+                    Manage your VDownloader preferences.
+                </p>
+
+            </div>
+
+        </header>
+
+
+        <section class="settings-grid">
+
+
+            <div class="panel">
+
+                <div class="panel-header">
+
+                    <div>
+
+                        <h2>
+                            Appearance
+                        </h2>
+
+                        <span>
+                            Customize how VDownloader looks.
+                        </span>
+
+                    </div>
+
+                </div>
+
+
+                <div class="setting-row">
+
+                    <div class="setting-info">
+
+                        <strong>
+                            Theme
+                        </strong>
+
+                        <span>
+                            Choose the appearance of the application.
+                        </span>
+
+                    </div>
+
+
+                    <select
+                        id="themeSelect"
+                        class="setting-select"
+                    >
+
+                        <option value="light">
+                            Light
+                        </option>
+
+                        <option value="dark">
+                            Dark
+                        </option>
+
+                    </select>
+
+                </div>
+
+            </div>
+
+
+
+            <div class="panel">
+
+                <div class="panel-header">
+
+                    <div>
+
+                        <h2>
+                            Download Settings
+                        </h2>
+
+                        <span>
+                            Set your default download preferences.
+                        </span>
+
+                    </div>
+
+                </div>
+
+
+                <div class="setting-row">
+
+                    <div class="setting-info">
+
+                        <strong>
+                            Default Quality
+                        </strong>
+
+                        <span>
+                            Quality used when no quality is selected.
+                        </span>
+
+                    </div>
+
+
+                    <select
+                        id="qualitySelect"
+                        class="setting-select"
+                    >
+
+                        <option value="best">
+                            Best Available
+                        </option>
+
+                        <option value="2160">
+                            2160p
+                        </option>
+
+                        <option value="1440">
+                            1440p
+                        </option>
+
+                        <option value="1080">
+                            1080p
+                        </option>
+
+                        <option value="720">
+                            720p
+                        </option>
+
+                        <option value="480">
+                            480p
+                        </option>
+
+                        <option value="360">
+                            360p
+                        </option>
+
+                    </select>
+
+                </div>
+
+
+                <div class="setting-row">
+
+                    <div class="setting-info">
+
+                        <strong>
+                            Default Format
+                        </strong>
+
+                        <span>
+                            Format used for new downloads.
+                        </span>
+
+                    </div>
+
+
+                    <select
+                        id="formatSelect"
+                        class="setting-select"
+                    >
+
+                        <option value="ask">
+                            Ask Every Time
+                        </option>
+
+                        <option value="mp4">
+                            MP4
+                        </option>
+
+                        <option value="webm">
+                            WebM
+                        </option>
+
+                        <option value="mp3">
+                            MP3
+                        </option>
+
+                        <option value="m4a">
+                            M4A
+                        </option>
+
+                    </select>
+
+                </div>
+
+            </div>
+
+
+
+            <div class="panel">
+
+                <div class="panel-header">
+
+                    <div>
+
+                        <h2>
+                            Notifications
+                        </h2>
+
+                        <span>
+                            Control download notifications.
+                        </span>
+
+                    </div>
+
+                </div>
+
+
+                <div class="setting-row">
+
+                    <div class="setting-info">
+
+                        <strong>
+                            Download Completed
+                        </strong>
+
+                        <span>
+                            Show a notification when a download finishes.
+                        </span>
+
+                    </div>
+
+
+                    <label class="switch">
+
+                        <input
+                            type="checkbox"
+                            id="completedNotification"
+                            checked
+                        >
+
+                        <span class="slider"></span>
+
+                    </label>
+
+                </div>
+
+
+                <div class="setting-row">
+
+                    <div class="setting-info">
+
+                        <strong>
+                            Download Failed
+                        </strong>
+
+                        <span>
+                            Show a notification when a download fails.
+                        </span>
+
+                    </div>
+
+
+                    <label class="switch">
+
+                        <input
+                            type="checkbox"
+                            id="failedNotification"
+                            checked
+                        >
+
+                        <span class="slider"></span>
+
+                    </label>
+
+                </div>
+
+            </div>
+
+
+
+            <div class="panel">
+
+                <div class="panel-header">
+
+                    <div>
+
+                        <h2>
+                            Storage
+                        </h2>
+
+                        <span>
+                            Manage downloaded files.
+                        </span>
+
+                    </div>
+
+                </div>
+
+
+                <div class="storage-box">
+
+                    <div>
+
+                        <strong>
+                            Download Folder
+                        </strong>
+
+                        <span>
+                            VDownloader downloads are stored in the application's downloads folder.
+                        </span>
+
+                    </div>
+
+                    <div class="folder-path">
+                        downloads/
+                    </div>
+
+                </div>
+
+
+                <button
+                    id="clearCompletedButton"
+                    class="danger-button"
+                    type="button"
+                >
+                    Clear Completed Downloads
+                </button>
+
+            </div>
+
+
+
+            <div class="panel">
+
+                <div class="panel-header">
+
+                    <div>
+
+                        <h2>
+                            Settings
+                        </h2>
+
+                        <span>
+                            Restore VDownloader's default settings.
+                        </span>
+
+                    </div>
+
+                </div>
+
+
+                <button
+                    id="resetButton"
+                    class="reset-button"
+                    type="button"
+                >
+                    Reset Settings
+                </button>
+
+            </div>
+
+
+        </section>
+
+
+        <div
+            id="saveMessage"
+            class="save-message"
+        >
+            Settings saved
+        </div>
+
+    </main>
+
+</div>
+
+
+<script
+    src="{{ url_for('static', filename='settings.js') }}"
+></script>
+
+
+</body>
+
+</html>

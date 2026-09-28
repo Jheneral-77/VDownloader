@@ -1,0 +1,7 @@
+venv/
+__pycache__/
+*.pyc
+downloads/
+analytics.db
+history.json
+.env

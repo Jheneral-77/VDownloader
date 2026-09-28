@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+
+<html lang="en">
+
+<head>
+
+<meta charset="UTF-8">
+
+<meta
+name="viewport"
+content="width=device-width, initial-scale=1.0"
+
+>
+
+<title>Analytics | VDownloader</title>
+
+<link
+    rel="stylesheet"
+    href="{{ url_for('static', filename='analytics.css') }}"
+>
+
+<script
+    src="{{ url_for('static', filename='theme.js') }}"
+></script>
+
+</head>
+
+<body>
+
+<div class="dashboard">
+
+<aside class="sidebar">
+
+
+<div class="brand">
+
+    <div class="brand-name">
+        VDownloader
+    </div>
+
+    <div class="brand-section">
+        Analytics
+    </div>
+
+</div>
+
+<nav class="navigation">
+
+    <a
+        href="/overview"
+        class="nav-link"
+    >
+        Overview
+    </a>
+
+    <a
+        href="/analytics"
+        class="nav-link active"
+    >
+        Analytics
+    </a>
+
+    <a
+        href="/"
+        class="nav-link"
+    >
+        Downloader
+    </a>
+
+    <a
+        href="/history"
+        class="nav-link"
+    >
+        History
+    </a>
+
+    <a
+        href="/settings"
+        class="nav-link"
+    >
+        Settings
+    </a>
+
+</nav>
+
+
+</aside>
+
+<main class="main">
+
+
+<header class="header">
+
+    <div>
+
+        <h1>
+            Analytics Overview
+        </h1>
+
+        <p>
+            Monitor your VDownloader activity.
+        </p>
+
+    </div>
+
+    <div class="header-actions">
+
+        <select
+            id="periodSelect"
+            class="period-select"
+        >
+
+            <option value="7">
+                Last 7 days
+            </option>
+
+            <option value="30">
+                Last 30 days
+            </option>
+
+        </select>
+
+        <button
+            id="refreshButton"
+            class="refresh-button"
+            type="button"
+        >
+            Refresh
+        </button>
+
+    </div>
+
+</header>
+
+<section class="stats">
+
+    <div class="stat">
+
+        <span class="stat-title">
+            Visitors
+        </span>
+
+        <strong
+            id="statVisitors"
+            class="stat-number"
+        >
+            —
+        </strong>
+
+        <span
+            id="statVisitorsChange"
+            class="stat-change"
+        >
+            Unique visitors
+        </span>
+
+    </div>
+
+    <div class="stat">
+
+        <span class="stat-title">
+            Page Views
+        </span>
+
+        <strong
+            id="statPageViews"
+            class="stat-number"
+        >
+            —
+        </strong>
+
+        <span class="stat-change">
+            Total views
+        </span>
+
+    </div>
+
+    <div class="stat">
+
+        <span class="stat-title">
+            Downloads
+        </span>
+
+        <strong
+            id="statDownloads"
+            class="stat-number"
+        >
+            —
+        </strong>
+
+        <span class="stat-change">
+            Downloads started
+        </span>
+
+    </div>
+
+    <div class="stat">
+
+        <span class="stat-title">
+            Completed
+        </span>
+
+        <strong
+            id="statCompleted"
+            class="stat-number"
+        >
+            —
+        </strong>
+
+        <span class="stat-change">
+            Successful downloads
+        </span>
+
+    </div>
+
+</section>
+
+<section class="main-grid">
+
+    <div class="panel activity-panel">
+
+        <div class="panel-header">
+
+            <div>
+
+                <h2>
+                    Download Activity
+                </h2>
+
+                <span>
+                    Downloads over time
+                </span>
+
+            </div>
+
+        </div>
+
+        <div
+            id="activityChart"
+            class="activity-chart"
+        >
+            <div class="empty">
+                Loading activity...
+            </div>
+        </div>
+
+    </div>
+
+    <div class="panel">
+
+        <div class="panel-header">
+
+            <div>
+
+                <h2>
+                    Download Types
+                </h2>
+
+                <span>
+                    Video and audio
+                </span>
+
+            </div>
+
+        </div>
+
+        <div
+            id="downloadTypes"
+            class="data-list"
+        >
+            <div class="empty">
+                Loading data...
+            </div>
+        </div>
+
+    </div>
+
+</section>
+
+<section class="secondary-grid">
+
+    <div class="panel">
+
+        <div class="panel-header">
+
+            <div>
+
+                <h2>
+                    Formats
+                </h2>
+
+                <span>
+                    Download formats
+                </span>
+
+            </div>
+
+        </div>
+
+        <div
+            id="formatData"
+            class="simple-list"
+        >
+            <div class="empty">
+                Loading data...
+            </div>
+        </div>
+
+    </div>
+
+    <div class="panel">
+
+        <div class="panel-header">
+
+            <div>
+
+                <h2>
+                    Browsers
+                </h2>
+
+                <span>
+                    Visitor browsers
+                </span>
+
+            </div>
+
+        </div>
+
+        <div
+            id="browserData"
+            class="simple-list"
+        >
+            <div class="empty">
+                Loading data...
+            </div>
+        </div>
+
+    </div>
+
+    <div class="panel">
+
+        <div class="panel-header">
+
+            <div>
+
+                <h2>
+                    Devices
+                </h2>
+
+                <span>
+                    Visitor devices
+                </span>
+
+            </div>
+
+        </div>
+
+        <div
+            id="deviceData"
+            class="simple-list"
+        >
+            <div class="empty">
+                Loading data...
+            </div>
+        </div>
+
+    </div>
+
+</section>
+
+<section class="panel actions-panel">
+
+    <div class="panel-header">
+
+        <div>
+
+            <h2>
+                Download Actions
+            </h2>
+
+            <span>
+                Pause, resume, cancel and retry activity
+            </span>
+
+        </div>
+
+    </div>
+
+    <div class="actions">
+
+        <div>
+
+            <span>
+                Pause
+            </span>
+
+            <strong id="actionPause">
+                —
+            </strong>
+
+        </div>
+
+        <div>
+
+            <span>
+                Resume
+            </span>
+
+            <strong id="actionResume">
+                —
+            </strong>
+
+        </div>
+
+        <div>
+
+            <span>
+                Cancel
+            </span>
+
+            <strong id="actionCancel">
+                —
+            </strong>
+
+        </div>
+
+        <div>
+
+            <span>
+                Retry
+            </span>
+
+            <strong id="actionRetry">
+                —
+            </strong>
+
+        </div>
+
+    </div>
+
+</section>
+
+
+</main>
+
+</div>
+
+<script
+    src="{{ url_for('static', filename='analytics.js') }}"
+></script>
+
+</body>
+
+</html>

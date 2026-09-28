@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+
+<html lang="en">
+
+<head>
+
+<meta charset="UTF-8">
+
+<meta
+name="viewport"
+content="width=device-width, initial-scale=1.0"
+
+>
+
+<title>Overview | VDownloader</title>
+
+<link
+    rel="stylesheet"
+    href="{{ url_for('static', filename='overview.css') }}"
+>
+
+<script
+    src="{{ url_for('static', filename='theme.js') }}"
+></script>
+
+</head>
+
+<body>
+
+<div class="dashboard">
+
+<!-- Sidebar -->
+
+<aside class="sidebar">
+
+
+<div class="brand">
+
+    <div class="brand-name">
+        VDownloader
+    </div>
+
+    <div class="brand-section">
+        Dashboard
+    </div>
+
+</div>
+
+<nav class="navigation">
+
+    <a
+        href="/overview"
+        class="nav-link active"
+    >
+        Overview
+    </a>
+
+    <a
+        href="/analytics"
+        class="nav-link"
+    >
+        Analytics
+    </a>
+
+    <a
+        href="/"
+        class="nav-link"
+    >
+        Downloader
+    </a>
+
+    <a
+        href="/history"
+        class="nav-link"
+    >
+        History
+    </a>
+
+    <a
+        href="/settings"
+        class="nav-link"
+    >
+        Settings
+    </a>
+
+</nav>
+
+
+</aside>
+
+<!-- Main Content -->
+
+<main class="main">
+
+
+<!-- Header -->
+
+<header class="header">
+
+    <div>
+
+        <h1>
+            Dashboard Overview
+        </h1>
+
+        <p>
+            A quick overview of your VDownloader activity.
+        </p>
+
+    </div>
+
+    <div class="header-actions">
+
+        <select
+            id="periodSelect"
+            class="period-select"
+        >
+
+            <option value="7">
+                Last 7 days
+            </option>
+
+            <option value="30">
+                Last 30 days
+            </option>
+
+        </select>
+
+        <button
+            id="refreshButton"
+            class="refresh-button"
+        >
+            Refresh
+        </button>
+
+    </div>
+
+</header>
+
+<!-- Summary Cards -->
+
+<section class="stats">
+
+    <div class="stat">
+
+        <span class="stat-title">
+            Total Downloads
+        </span>
+
+        <strong
+            id="statDownloads"
+            class="stat-number"
+        >
+            —
+        </strong>
+
+        <span class="stat-description">
+            Downloads started
+        </span>
+
+    </div>
+
+    <div class="stat">
+
+        <span class="stat-title">
+            Completed
+        </span>
+
+        <strong
+            id="statCompleted"
+            class="stat-number"
+        >
+            —
+        </strong>
+
+        <span class="stat-description">
+            Successful downloads
+        </span>
+
+    </div>
+
+    <div class="stat">
+
+        <span class="stat-title">
+            Active Downloads
+        </span>
+
+        <strong
+            id="statActive"
+            class="stat-number"
+        >
+            —
+        </strong>
+
+        <span class="stat-description">
+            Currently downloading
+        </span>
+
+    </div>
+
+    <div class="stat">
+
+        <span class="stat-title">
+            Failed
+        </span>
+
+        <strong
+            id="statFailed"
+            class="stat-number"
+        >
+            —
+        </strong>
+
+        <span class="stat-description">
+            Failed downloads
+        </span>
+
+    </div>
+
+</section>
+
+<!-- Main Dashboard Grid -->
+
+<section class="main-grid">
+
+    <!-- Download Activity -->
+
+    <div class="panel activity-panel">
+
+        <div class="panel-header">
+
+            <div>
+
+                <h2>
+                    Download Activity
+                </h2>
+
+                <span>
+                    Downloads over time
+                </span>
+
+            </div>
+
+        </div>
+
+        <div
+            id="activityChart"
+            class="activity-chart"
+        >
+
+            <div class="empty">
+                Loading activity...
+            </div>
+
+        </div>
+
+    </div>
+
+    <!-- Download Types -->
+
+    <div class="panel">
+
+        <div class="panel-header">
+
+            <div>
+
+                <h2>
+                    Download Types
+                </h2>
+
+                <span>
+                    Video and audio downloads
+                </span>
+
+            </div>
+
+        </div>
+
+        <div
+            id="downloadTypes"
+            class="download-types"
+        >
+
+            <div class="type-row">
+
+                <div>
+
+                    <span class="type-name">
+                        Video
+                    </span>
+
+                    <span
+                        id="videoCount"
+                        class="type-count"
+                    >
+                        —
+                    </span>
+
+                </div>
+
+                <div class="type-track">
+
+                    <div
+                        id="videoProgress"
+                        class="type-progress"
+                    ></div>
+
+                </div>
+
+            </div>
+
+            <div class="type-row">
+
+                <div>
+
+                    <span class="type-name">
+                        Audio
+                    </span>
+
+                    <span
+                        id="audioCount"
+                        class="type-count"
+                    >
+                        —
+                    </span>
+
+                </div>
+
+                <div class="type-track">
+
+                    <div
+                        id="audioProgress"
+                        class="type-progress audio"
+                    ></div>
+
+                </div>
+
+            </div>
+
+        </div>
+
+    </div>
+
+</section>
+
+<!-- Quick Statistics -->
+
+<section class="secondary-grid">
+
+    <div class="panel">
+
+        <div class="panel-header">
+
+            <div>
+
+                <h2>
+                    Visitors
+                </h2>
+
+                <span>
+                    Unique visitors
+                </span>
+
+            </div>
+
+        </div>
+
+        <div class="metric-content">
+
+            <strong
+                id="visitorCount"
+                class="large-number"
+            >
+                —
+            </strong>
+
+            <span>
+                Visitors recorded
+            </span>
+
+        </div>
+
+    </div>
+
+    <div class="panel">
+
+        <div class="panel-header">
+
+            <div>
+
+                <h2>
+                    Page Views
+                </h2>
+
+                <span>
+                    Website activity
+                </span>
+
+            </div>
+
+        </div>
+
+        <div class="metric-content">
+
+            <strong
+                id="pageViewCount"
+                class="large-number"
+            >
+                —
+            </strong>
+
+            <span>
+                Total page views
+            </span>
+
+        </div>
+
+    </div>
+
+    <div class="panel">
+
+        <div class="panel-header">
+
+            <div>
+
+                <h2>
+                    Completion Rate
+                </h2>
+
+                <span>
+                    Successful downloads
+                </span>
+
+            </div>
+
+        </div>
+
+        <div class="metric-content">
+
+            <strong
+                id="completionRate"
+                class="large-number"
+            >
+                —
+            </strong>
+
+            <span>
+                Download success rate
+            </span>
+
+        </div>
+
+    </div>
+
+</section>
+
+<!-- Quick Actions -->
+
+<section class="panel quick-actions-panel">
+
+    <div class="panel-header">
+
+        <div>
+
+            <h2>
+                Quick Actions
+            </h2>
+
+            <span>
+                Common VDownloader tasks
+            </span>
+
+        </div>
+
+    </div>
+
+    <div class="quick-actions">
+
+        <a
+            href="/"
+            class="quick-action"
+        >
+
+            <strong>
+                Downloader
+            </strong>
+
+            <span>
+                Download a video or audio file
+            </span>
+
+        </a>
+
+        <a
+            href="/analytics"
+            class="quick-action"
+        >
+
+            <strong>
+                Analytics
+            </strong>
+
+            <span>
+                View detailed download statistics
+            </span>
+
+        </a>
+
+        <a
+            href="/history"
+            class="quick-action"
+        >
+
+            <strong>
+                History
+            </strong>
+
+            <span>
+                View previous downloads
+            </span>
+
+        </a>
+
+    </div>
+
+</section>
+
+
+</main>
+
+</div>
+
+<script
+    src="{{ url_for('static', filename='overview.js') }}"
+></script>
+
+</body>
+
+</html>
