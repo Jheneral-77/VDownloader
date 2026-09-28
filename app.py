@@ -34,7 +34,11 @@ ANALYTICS_DB = BASE_DIR / "analytics.db"
 DOWNLOAD_FOLDER.mkdir(exist_ok=True)
 
 
-FFMPEG_LOCATION = r"C:\ffmpeg\bin\ffmpeg.exe"
+FFMPEG_LOCATION = (
+    r"C:\ffmpeg\bin\ffmpeg.exe"
+    if Path(r"C:\ffmpeg\bin\ffmpeg.exe").exists()
+    else shutil.which("ffmpeg")
+)
 
 USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
