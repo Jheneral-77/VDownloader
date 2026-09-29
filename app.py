@@ -24,7 +24,29 @@ import uuid
 
 
 app = Flask(__name__)
+@app.route("/debug-youtube")
+def debug_youtube():
+    try:
+        options = get_ydl_options()
 
+        with YoutubeDL(options) as ydl:
+            info = ydl.extract_info(
+                "https://www.youtube.com/watch?v=6STloeErjmM",
+                download=False
+            )
+
+        return jsonify({
+            "status": "SUCCESS",
+            "title": info.get("title"),
+            "id": info.get("id"),
+            "extractor": info.get("extractor")
+        })
+
+    except Exception as e:
+        return jsonify({
+            "status": "FAILED",
+            "error": str(e)
+        }), 500
 BASE_DIR = Path(__file__).resolve().parent
 
 DOWNLOAD_FOLDER = BASE_DIR / "downloads"
