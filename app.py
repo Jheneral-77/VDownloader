@@ -1030,9 +1030,9 @@ def get_ydl_options():
 
         "extractor_args": {
             "youtube": {
-                "player_client": [
-                    "mweb"
-                ],
+               "player_client": [
+    "web_embedded"
+],
                 "pot_server": [
                     "bgutil:http://127.0.0.1:4416"
                 ]
