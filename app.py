@@ -8,11 +8,8 @@ from flask import (
 )
 
 from yt_dlp import YoutubeDL
-from yt_dlp.networking.impersonate import ImpersonateTarget
-
 from datetime import datetime, timedelta
 from pathlib import Path
-
 import json
 import re
 import shutil
@@ -20,38 +17,10 @@ import sqlite3
 import threading
 import time
 import uuid
+import secrets
 
 
 app = Flask(__name__)
-
-
-# =========================================================
-# DEBUG YOUTUBE
-# =========================================================
-
-@app.route("/debug-youtube")
-def debug_youtube():
-    try:
-        options = get_ydl_options()
-
-        with YoutubeDL(options) as ydl:
-            info = ydl.extract_info(
-                "https://www.youtube.com/watch?v=6STloeErjmM",
-                download=False
-            )
-
-        return jsonify({
-            "status": "SUCCESS",
-            "title": info.get("title"),
-            "id": info.get("id"),
-            "extractor": info.get("extractor")
-        })
-
-    except Exception as error:
-        return jsonify({
-            "status": "FAILED",
-            "error": str(error)
-        }), 500
 
 
 # =========================================================
@@ -62,11 +31,10 @@ BASE_DIR = Path(__file__).resolve().parent
 
 DOWNLOAD_FOLDER = BASE_DIR / "downloads"
 HISTORY_FILE = BASE_DIR / "history.json"
+SETTINGS_FILE = BASE_DIR / "settings.json"
 ANALYTICS_DB = BASE_DIR / "analytics.db"
 
-DOWNLOAD_FOLDER.mkdir(
-    exist_ok=True
-)
+DOWNLOAD_FOLDER.mkdir(exist_ok=True)
 
 
 # =========================================================
@@ -90,13 +58,6 @@ USER_AGENT = (
     "Chrome/150.0.0.0 Safari/537.36"
 )
 
-IMPERSONATE_TARGET = ImpersonateTarget(
-    "chrome",
-    "150",
-    "macos",
-    "26"
-)
-
 
 # =========================================================
 # NODE.JS
@@ -112,6 +73,13 @@ NODE_PATH = shutil.which("node")
 AUDIO_FORMATS = {
     "mp3",
     "m4a"
+}
+
+VIDEO_FORMATS = {
+    "mp4",
+    "webm",
+    "mkv",
+    "mov"
 }
 
 ANALYTICS_FORMATS = {
@@ -130,6 +98,85 @@ ANALYTICS_FORMATS = {
 
 VISITOR_COOKIE = "vdownloader_visitor"
 
+VISITOR_COOKIE_MAX_AGE = 60 * 60 * 24 * 365
+
+
+def create_visitor_id():
+    return secrets.token_urlsafe(32)
+
+
+def get_request_visitor_id():
+    visitor_id = request.cookies.get(VISITOR_COOKIE)
+
+    if visitor_id:
+        return visitor_id
+
+    return create_visitor_id()
+
+
+def set_visitor_cookie(response, visitor_id):
+    response.set_cookie(
+        VISITOR_COOKIE,
+        visitor_id,
+        max_age=VISITOR_COOKIE_MAX_AGE,
+        httponly=True,
+        samesite="Lax",
+        secure=request.is_secure
+    )
+
+    return response
+
+
+def json_with_visitor_cookie(
+    data,
+    visitor_id,
+    status=200
+):
+    response = jsonify(data)
+    response.status_code = status
+
+    return set_visitor_cookie(
+        response,
+        visitor_id
+    )
+
+
+# =========================================================
+# DEFAULT SETTINGS
+# =========================================================
+
+DEFAULT_SETTINGS = {
+    "theme": "light",
+    "quality": "best",
+    "format": "ask",
+    "completedNotification": True,
+    "failedNotification": True
+}
+
+
+VALID_THEMES = {
+    "light",
+    "dark"
+}
+
+VALID_QUALITIES = {
+    "best",
+    "2160",
+    "1440",
+    "1080",
+    "720",
+    "480",
+    "360"
+}
+
+VALID_FORMATS = {
+    "ask",
+    "mp4",
+    "webm",
+    "mp3",
+    "m4a"
+}
+
 
 # =========================================================
 # JOB STORAGE
@@ -140,6 +187,8 @@ jobs = {}
 jobs_lock = threading.Lock()
 
 history_lock = threading.RLock()
+
+settings_lock = threading.RLock()
 
 analytics_job_context = {}
 
@@ -168,12 +217,25 @@ def now_string():
     )
 
 
+def public_job(job):
+    if not job:
+        return None
+
+    result = dict(job)
+
+    result.pop(
+        "visitor_id",
+        None
+    )
+
+    return result
+
+
 # =========================================================
 # ANALYTICS
 # =========================================================
 
 def get_analytics_connection():
-
     connection = sqlite3.connect(
         str(ANALYTICS_DB),
         timeout=30
@@ -193,11 +255,9 @@ def get_analytics_connection():
 
 
 def initialize_analytics():
-
     connection = get_analytics_connection()
 
     try:
-
         connection.execute(
             """
             CREATE TABLE IF NOT EXISTS visitors (
@@ -257,7 +317,6 @@ def initialize_analytics():
 
 
 def detect_device(user_agent):
-
     user_agent = str(
         user_agent or ""
     ).lower()
@@ -279,7 +338,6 @@ def detect_device(user_agent):
 
 
 def detect_browser(user_agent):
-
     user_agent = str(
         user_agent or ""
     ).lower()
@@ -308,18 +366,6 @@ def detect_browser(user_agent):
     return "Other"
 
 
-def get_request_visitor_id():
-
-    visitor_id = request.cookies.get(
-        VISITOR_COOKIE
-    )
-
-    if visitor_id:
-        return visitor_id
-
-    return uuid.uuid4().hex
-
-
 def record_analytics_event(
     event_type,
     visitor_id=None,
@@ -328,16 +374,13 @@ def record_analytics_event(
     device=None,
     browser=None
 ):
-
     try:
-
         visitor_id = (
             visitor_id
-            or uuid.uuid4().hex
+            or get_request_visitor_id()
         )
 
         if device is None:
-
             device = detect_device(
                 request.headers.get(
                     "User-Agent",
@@ -346,7 +389,6 @@ def record_analytics_event(
             )
 
         if browser is None:
-
             browser = detect_browser(
                 request.headers.get(
                     "User-Agent",
@@ -355,7 +397,6 @@ def record_analytics_event(
             )
 
         if format_value:
-
             format_value = str(
                 format_value
             ).lower()
@@ -375,7 +416,6 @@ def record_analytics_event(
         connection = get_analytics_connection()
 
         try:
-
             connection.execute(
                 """
                 INSERT OR IGNORE INTO visitors (
@@ -449,7 +489,6 @@ def record_analytics_event(
 
 
 def record_page_view():
-
     visitor_id = get_request_visitor_id()
 
     user_agent = request.headers.get(
@@ -458,35 +497,18 @@ def record_page_view():
     )
 
     record_analytics_event(
-        event_type="page_view",
+        "page_view",
         visitor_id=visitor_id,
-        device=detect_device(
-            user_agent
-        ),
-        browser=detect_browser(
-            user_agent
-        )
+        device=detect_device(user_agent),
+        browser=detect_browser(user_agent)
     )
 
     return visitor_id
 
 
-def set_visitor_cookie(
-    response,
-    visitor_id
-):
-
-    response.set_cookie(
-        VISITOR_COOKIE,
-        visitor_id,
-        max_age=60 * 60 * 24 * 365,
-        httponly=True,
-        samesite="Lax",
-        secure=request.is_secure
-    )
-
-    return response
-
+# =========================================================
+# JOB ANALYTICS CONTEXT
+# =========================================================
 
 def set_job_analytics_context(
     job_id,
@@ -494,9 +516,7 @@ def set_job_analytics_context(
     device=None,
     browser=None
 ):
-
     with analytics_job_context_lock:
-
         analytics_job_context[job_id] = {
             "visitor_id": visitor_id,
             "device": device,
@@ -505,9 +525,7 @@ def set_job_analytics_context(
 
 
 def get_job_analytics_context(job_id):
-
     with analytics_job_context_lock:
-
         context = analytics_job_context.get(
             job_id
         )
@@ -519,9 +537,7 @@ def get_job_analytics_context(job_id):
 
 
 def remove_job_analytics_context(job_id):
-
     with analytics_job_context_lock:
-
         analytics_job_context.pop(
             job_id,
             None
@@ -532,7 +548,6 @@ def record_job_analytics(
     event_type,
     job
 ):
-
     if not job:
         return
 
@@ -540,28 +555,26 @@ def record_job_analytics(
         job.get("id")
     )
 
+    visitor_id = (
+        job.get("visitor_id")
+        or context.get("visitor_id")
+    )
+
     record_analytics_event(
         event_type=event_type,
-        visitor_id=context.get(
-            "visitor_id"
-        ),
-        format_value=job.get(
-            "format"
-        ),
-        download_type=job.get(
-            "download_type"
-        ),
-        device=context.get(
-            "device"
-        ),
-        browser=context.get(
-            "browser"
-        )
+        visitor_id=visitor_id,
+        format_value=job.get("format"),
+        download_type=job.get("download_type"),
+        device=context.get("device"),
+        browser=context.get("browser")
     )
 
 
-def get_analytics_stats():
+# =========================================================
+# ANALYTICS STATS
+# =========================================================
 
+def get_analytics_stats():
     today = datetime.now().date()
 
     start_date = (
@@ -571,7 +584,6 @@ def get_analytics_stats():
     connection = get_analytics_connection()
 
     try:
-
         event_counts = {}
 
         rows = connection.execute(
@@ -585,7 +597,6 @@ def get_analytics_stats():
         ).fetchall()
 
         for row in rows:
-
             event_counts[
                 row["event_type"]
             ] = row["total"]
@@ -626,7 +637,6 @@ def get_analytics_stats():
         }
 
         for row in format_rows:
-
             fmt = str(
                 row["format"]
             ).lower()
@@ -657,7 +667,6 @@ def get_analytics_stats():
         }
 
         for row in completed_format_rows:
-
             fmt = str(
                 row["format"]
             ).lower()
@@ -681,7 +690,6 @@ def get_analytics_stats():
         devices = {}
 
         for row in device_rows:
-
             devices[
                 row["device"]
             ] = row["total"]
@@ -702,7 +710,6 @@ def get_analytics_stats():
         browsers = {}
 
         for row in browser_rows:
-
             browsers[
                 row["browser"]
             ] = row["total"]
@@ -731,9 +738,7 @@ def get_analytics_stats():
             """
             SELECT
                 event_date,
-                COUNT(
-                    DISTINCT visitor_id
-                ) AS total
+                COUNT(DISTINCT visitor_id) AS total
             FROM events
             WHERE
                 event_date >= ?
@@ -751,12 +756,9 @@ def get_analytics_stats():
         daily = {}
 
         for index in range(30):
-
             current_date = (
                 today
-                - timedelta(
-                    days=29 - index
-                )
+                - timedelta(days=29 - index)
             ).isoformat()
 
             daily[current_date] = {
@@ -787,73 +789,44 @@ def get_analytics_stats():
             }
 
         for row in daily_rows:
-
             day = row["event_date"]
 
             if day not in daily:
                 continue
 
             event_type = row["event_type"]
-
             count = row["total"]
 
             if event_type == "page_view":
-
                 daily[day]["page_views"] += count
 
             elif event_type == "analysis":
-
                 daily[day]["analyses"] += count
 
             elif event_type == "analysis_failed":
-
                 daily[day]["analysis_failures"] += count
 
             elif event_type == "download_started":
-
                 daily[day]["downloads_started"] += count
 
-                download_type = row[
-                    "download_type"
-                ]
-
-                if download_type == "audio":
-
-                    daily[day][
-                        "audio_downloads"
-                    ] += count
-
+                if row["download_type"] == "audio":
+                    daily[day]["audio_downloads"] += count
                 else:
-
-                    daily[day][
-                        "video_downloads"
-                    ] += count
+                    daily[day]["video_downloads"] += count
 
                 fmt = row["format"]
 
                 if fmt in daily[day]["formats"]:
-
-                    daily[day]["formats"][
-                        fmt
-                    ] += count
+                    daily[day]["formats"][fmt] += count
 
             elif event_type == "download_completed":
-
-                daily[day][
-                    "downloads_completed"
-                ] += count
+                daily[day]["downloads_completed"] += count
 
             elif event_type == "download_failed":
-
-                daily[day][
-                    "downloads_failed"
-                ] += count
+                daily[day]["downloads_failed"] += count
 
             elif event_type == "file_served":
-
-                daily[day][
-                    "files_served"
-                ] += count
+                daily[day]["files_served"] += count
 
             elif event_type in {
                 "pause",
@@ -861,66 +834,53 @@ def get_analytics_stats():
                 "cancel",
                 "retry"
             }:
-
                 daily[day]["actions"][
                     event_type
                 ] += count
 
         for day, count in daily_visitors.items():
-
             if day in daily:
                 daily[day]["visitors"] = count
 
         totals = {
             "visitors": total_visitors,
             "page_views": event_counts.get(
-                "page_view",
-                0
+                "page_view", 0
             ),
             "analyses": event_counts.get(
-                "analysis",
-                0
+                "analysis", 0
             ),
             "analysis_failures": event_counts.get(
-                "analysis_failed",
-                0
+                "analysis_failed", 0
             ),
             "downloads_started": event_counts.get(
-                "download_started",
-                0
+                "download_started", 0
             ),
             "downloads_completed": event_counts.get(
-                "download_completed",
-                0
+                "download_completed", 0
             ),
             "downloads_failed": event_counts.get(
-                "download_failed",
-                0
+                "download_failed", 0
             ),
             "video_downloads": 0,
             "audio_downloads": 0,
             "files_served": event_counts.get(
-                "file_served",
-                0
+                "file_served", 0
             ),
             "formats": formats,
             "completed_formats": completed_formats,
             "actions": {
                 "pause": event_counts.get(
-                    "pause",
-                    0
+                    "pause", 0
                 ),
                 "resume": event_counts.get(
-                    "resume",
-                    0
+                    "resume", 0
                 ),
                 "cancel": event_counts.get(
-                    "cancel",
-                    0
+                    "cancel", 0
                 ),
                 "retry": event_counts.get(
-                    "retry",
-                    0
+                    "retry", 0
                 )
             }
         }
@@ -939,18 +899,11 @@ def get_analytics_stats():
         ).fetchall()
 
         for row in download_type_rows:
-
             if row["download_type"] == "audio":
-
-                totals[
-                    "audio_downloads"
-                ] = row["total"]
+                totals["audio_downloads"] = row["total"]
 
             elif row["download_type"] == "video":
-
-                totals[
-                    "video_downloads"
-                ] = row["total"]
+                totals["video_downloads"] = row["total"]
 
         daily_values = list(
             daily.values()
@@ -1018,29 +971,22 @@ initialize_analytics()
 # =========================================================
 
 def get_ydl_options():
-
     options = {
         "quiet": True,
         "no_warnings": True,
         "noplaylist": True,
         "retries": 3,
         "fragment_retries": 3,
-
         "remote_components": [
             "ejs:github"
         ],
-
-        "impersonate": IMPERSONATE_TARGET,
-
         "http_headers": {
             "User-Agent": USER_AGENT
         },
-
         "ffmpeg_location": FFMPEG_LOCATION
     }
 
     if NODE_PATH:
-
         options["js_runtimes"] = {
             "node": {
                 "path": NODE_PATH
@@ -1048,6 +994,35 @@ def get_ydl_options():
         }
 
     return options
+
+
+# =========================================================
+# DEBUG YOUTUBE
+# =========================================================
+
+@app.route("/debug-youtube")
+def debug_youtube():
+    try:
+        options = get_ydl_options()
+
+        with YoutubeDL(options) as ydl:
+            info = ydl.extract_info(
+                "https://www.youtube.com/watch?v=6STloeErjmM",
+                download=False
+            )
+
+        return jsonify({
+            "status": "SUCCESS",
+            "title": info.get("title"),
+            "id": info.get("id"),
+            "extractor": info.get("extractor")
+        })
+
+    except Exception as error:
+        return jsonify({
+            "status": "FAILED",
+            "error": str(error)
+        }), 500
 
 
 # =========================================================
@@ -1059,7 +1034,6 @@ def extract_quality(
     format_note,
     height
 ):
-
     text = (
         f"{format_id or ''} "
         f"{format_note or ''}"
@@ -1071,39 +1045,27 @@ def extract_quality(
     )
 
     if match:
-
         return match.group(1)
 
     if height:
-
         try:
-
-            return str(
-                int(height)
-            )
-
+            return str(int(height))
         except (
             TypeError,
             ValueError
         ):
-
             pass
 
     return None
 
 
 def get_format_size(fmt):
-
-    value = fmt.get(
-        "filesize"
-    )
+    value = fmt.get("filesize")
 
     if value:
         return int(value)
 
-    value = fmt.get(
-        "filesize_approx"
-    )
+    value = fmt.get("filesize_approx")
 
     if value:
         return int(value)
@@ -1112,39 +1074,24 @@ def get_format_size(fmt):
 
 
 def build_format_list(info):
-
     formats = []
 
-    for fmt in info.get(
-        "formats",
-        []
-    ):
-
-        height = fmt.get(
-            "height"
-        )
+    for fmt in info.get("formats", []):
+        height = fmt.get("height")
 
         if not height:
             continue
 
         try:
-
             height = int(height)
-
         except (
             TypeError,
             ValueError
         ):
-
             continue
 
-        vcodec = fmt.get(
-            "vcodec"
-        )
-
-        acodec = fmt.get(
-            "acodec"
-        )
+        vcodec = fmt.get("vcodec")
+        acodec = fmt.get("acodec")
 
         if not vcodec or vcodec == "none":
             continue
@@ -1156,104 +1103,70 @@ def build_format_list(info):
         )
 
         if not quality:
-
             quality = str(height)
 
-        size = get_format_size(
-            fmt
-        )
+        size = get_format_size(fmt)
 
         formats.append({
-            "format_id": fmt.get(
-                "format_id"
-            ),
-            "width": fmt.get(
-                "width"
-            ),
+            "format_id": fmt.get("format_id"),
+            "width": fmt.get("width"),
             "height": height,
             "quality": quality,
-            "ext": fmt.get(
-                "ext"
-            ) or "mp4",
+            "ext": fmt.get("ext") or "mp4",
             "vcodec": vcodec,
             "acodec": acodec,
             "has_audio": bool(
                 acodec
                 and acodec != "none"
             ),
-            "filesize": fmt.get(
-                "filesize"
-            ),
+            "filesize": fmt.get("filesize"),
             "filesize_approx": fmt.get(
                 "filesize_approx"
             ),
             "estimated_size": size,
-            "fps": fmt.get(
-                "fps"
-            ),
-            "format_note": fmt.get(
-                "format_note"
-            )
+            "fps": fmt.get("fps"),
+            "format_note": fmt.get("format_note")
         })
 
     unique = {}
 
     for fmt in formats:
-
         key = (
             fmt["quality"],
             fmt["ext"],
             fmt["has_audio"]
         )
 
-        existing = unique.get(
-            key
-        )
+        existing = unique.get(key)
 
         if not existing:
-
             unique[key] = fmt
-
             continue
 
         current_size = (
-            fmt.get(
-                "estimated_size"
-            )
+            fmt.get("estimated_size")
             or 0
         )
 
         existing_size = (
-            existing.get(
-                "estimated_size"
-            )
+            existing.get("estimated_size")
             or 0
         )
 
         if current_size > existing_size:
-
             unique[key] = fmt
 
-    return list(
-        unique.values()
-    )
+    return list(unique.values())
 
 
 def get_available_qualities(formats):
-
     values = set()
 
     for fmt in formats:
-
-        quality = fmt.get(
-            "quality"
-        )
+        quality = fmt.get("quality")
 
         if quality:
-
-            values.add(
-                str(quality)
-            )
+            values.add(str(quality))
 
     return sorted(
         values,
@@ -1269,20 +1182,14 @@ def get_available_qualities(formats):
 
 
 def get_available_extensions(formats):
-
     values = []
 
     for fmt in formats:
-
         ext = str(
             fmt.get("ext") or ""
         ).lower()
 
-        if (
-            ext
-            and ext not in values
-        ):
-
+        if ext and ext not in values:
             values.append(ext)
 
     preferred = []
@@ -1293,22 +1200,17 @@ def get_available_extensions(formats):
         "mkv",
         "mov"
     ]:
-
         if ext in values:
-
             preferred.append(ext)
 
     for ext in values:
-
         if ext not in preferred:
-
             preferred.append(ext)
 
     return preferred
 
 
 def get_best_quality(formats):
-
     qualities = get_available_qualities(
         formats
     )
@@ -1320,14 +1222,11 @@ def get_best_quality(formats):
 
 
 def get_quality_sizes(formats):
-
     sizes = {}
 
     for fmt in formats:
-
         quality = str(
-            fmt.get("quality")
-            or ""
+            fmt.get("quality") or ""
         )
 
         size = fmt.get(
@@ -1341,11 +1240,7 @@ def get_quality_sizes(formats):
             quality
         )
 
-        if (
-            current is None
-            or size > current
-        ):
-
+        if current is None or size > current:
             sizes[quality] = size
 
     return sizes
@@ -1356,42 +1251,31 @@ def get_quality_sizes(formats):
 # =========================================================
 
 def _read_history_data():
-
     if not HISTORY_FILE.exists():
         return {}
 
     try:
-
         with open(
             HISTORY_FILE,
             "r",
             encoding="utf-8"
         ) as file:
-
             data = json.load(file)
 
         if isinstance(data, dict):
             return data
 
-        if isinstance(data, list):
-
-            return {
-                "__legacy_shared__": data
-            }
+        return {}
 
     except Exception:
-        pass
-
-    return {}
+        return {}
 
 
 def load_history(visitor_id):
-
     if not visitor_id:
         return []
 
     with history_lock:
-
         data = _read_history_data()
 
         history = data.get(
@@ -1409,12 +1293,10 @@ def save_history(
     visitor_id,
     history
 ):
-
     if not visitor_id:
         return
 
     with history_lock:
-
         data = _read_history_data()
 
         data[str(visitor_id)] = (
@@ -1428,7 +1310,6 @@ def save_history(
             "w",
             encoding="utf-8"
         ) as file:
-
             json.dump(
                 data,
                 file,
@@ -1437,12 +1318,10 @@ def save_history(
 
 
 def add_history(job):
+    if not job:
+        return
 
-    context = get_job_analytics_context(
-        job.get("id")
-    )
-
-    visitor_id = context.get(
+    visitor_id = job.get(
         "visitor_id"
     )
 
@@ -1450,7 +1329,6 @@ def add_history(job):
         return
 
     with history_lock:
-
         data = _read_history_data()
 
         history = data.get(
@@ -1505,7 +1383,6 @@ def add_history(job):
             "w",
             encoding="utf-8"
         ) as file:
-
             json.dump(
                 data,
                 file,
@@ -1514,39 +1391,169 @@ def add_history(job):
 
 
 # =========================================================
+# SETTINGS STORAGE
+# =========================================================
+
+def _read_settings_data():
+    if not SETTINGS_FILE.exists():
+        return {}
+
+    try:
+        with open(
+            SETTINGS_FILE,
+            "r",
+            encoding="utf-8"
+        ) as file:
+            data = json.load(file)
+
+        if isinstance(data, dict):
+            return data
+
+    except Exception:
+        pass
+
+    return {}
+
+
+def sanitize_settings(settings):
+    clean = dict(
+        DEFAULT_SETTINGS
+    )
+
+    if not isinstance(settings, dict):
+        return clean
+
+    theme = settings.get("theme")
+
+    if theme in VALID_THEMES:
+        clean["theme"] = theme
+
+    quality = str(
+        settings.get("quality", "")
+    )
+
+    if quality in VALID_QUALITIES:
+        clean["quality"] = quality
+
+    fmt = str(
+        settings.get("format", "")
+    ).lower()
+
+    if fmt in VALID_FORMATS:
+        clean["format"] = fmt
+
+    if "completedNotification" in settings:
+        clean["completedNotification"] = bool(
+            settings["completedNotification"]
+        )
+
+    if "failedNotification" in settings:
+        clean["failedNotification"] = bool(
+            settings["failedNotification"]
+        )
+
+    return clean
+
+
+def load_settings(visitor_id):
+    if not visitor_id:
+        return dict(
+            DEFAULT_SETTINGS
+        )
+
+    with settings_lock:
+        data = _read_settings_data()
+
+        stored = data.get(
+            str(visitor_id),
+            {}
+        )
+
+        return sanitize_settings(
+            stored
+        )
+
+
+def save_settings(
+    visitor_id,
+    settings
+):
+    if not visitor_id:
+        return dict(
+            DEFAULT_SETTINGS
+        )
+
+    clean_settings = sanitize_settings(
+        settings
+    )
+
+    with settings_lock:
+        data = _read_settings_data()
+
+        data[str(visitor_id)] = clean_settings
+
+        with open(
+            SETTINGS_FILE,
+            "w",
+            encoding="utf-8"
+        ) as file:
+            json.dump(
+                data,
+                file,
+                indent=2
+            )
+
+    return clean_settings
+
+
+# =========================================================
 # JOBS
 # =========================================================
 
 def get_job(job_id):
+    with jobs_lock:
+        job = jobs.get(job_id)
+
+        if not job:
+            return None
+
+        return dict(job)
+
+
+def get_owned_job(
+    job_id,
+    visitor_id
+):
+    if not visitor_id:
+        return None
 
     with jobs_lock:
+        job = jobs.get(job_id)
 
-        return jobs.get(
-            job_id
-        )
+        if not job:
+            return None
+
+        if job.get(
+            "visitor_id"
+        ) != visitor_id:
+            return None
+
+        return dict(job)
 
 
 def update_job(
     job_id,
     **updates
 ):
-
     with jobs_lock:
-
-        job = jobs.get(
-            job_id
-        )
+        job = jobs.get(job_id)
 
         if not job:
             return None
 
-        job.update(
-            updates
-        )
+        job.update(updates)
 
-        return dict(
-            job
-        )
+        return dict(job)
 
 
 def create_job(
@@ -1556,22 +1563,20 @@ def create_job(
     estimated_size=None,
     title=None,
     source=None,
-    duration=None
+    duration=None,
+    visitor_id=None
 ):
-
     job_id = uuid.uuid4().hex
 
     video_format = str(
-        video_format
-        or "mp4"
+        video_format or "mp4"
     ).lower()
 
     job = {
         "id": job_id,
+        "visitor_id": visitor_id,
         "url": url,
-        "quality": str(
-            quality or ""
-        ),
+        "quality": str(quality or ""),
         "format": video_format,
         "estimated_size": estimated_size,
         "title": title or "Video",
@@ -1582,10 +1587,7 @@ def create_job(
         "speed": 0,
         "eta": None,
         "downloaded_bytes": 0,
-        "total_bytes": (
-            estimated_size
-            or 0
-        ),
+        "total_bytes": estimated_size or 0,
         "filename": None,
         "error": None,
         "cancel_requested": False,
@@ -1599,43 +1601,33 @@ def create_job(
     }
 
     with jobs_lock:
-
         jobs[job_id] = job
 
-    return job
+    return dict(job)
 
 
 def cleanup_job_folder(job_id):
-
-    folder = (
-        DOWNLOAD_FOLDER
-        / job_id
-    )
+    folder = DOWNLOAD_FOLDER / job_id
 
     if folder.exists():
-
         try:
-
             shutil.rmtree(
                 folder,
                 ignore_errors=True
             )
-
         except Exception:
             pass
 
 
 def find_downloaded_file(folder):
-
     if not folder.exists():
         return None
 
-    files = []
-
-    for path in folder.rglob("*"):
-
-        if path.is_file():
-            files.append(path)
+    files = [
+        path
+        for path in folder.rglob("*")
+        if path.is_file()
+    ]
 
     if not files:
         return None
@@ -1649,21 +1641,17 @@ def find_downloaded_file(folder):
 
 
 def get_partial_download_size(folder):
-
     if not folder.exists():
         return 0
 
     total = 0
 
     for path in folder.rglob("*"):
-
         if not path.is_file():
             continue
 
         try:
-
             total += path.stat().st_size
-
         except OSError:
             pass
 
@@ -1675,17 +1663,13 @@ def get_partial_download_size(folder):
 # =========================================================
 
 def download_video(job_id):
-
-    job = get_job(
-        job_id
-    )
+    job = get_job(job_id)
 
     if not job:
         return
 
     job_folder = (
-        DOWNLOAD_FOLDER
-        / job_id
+        DOWNLOAD_FOLDER / job_id
     )
 
     job_folder.mkdir(
@@ -1694,10 +1678,7 @@ def download_video(job_id):
     )
 
     def progress_hook(data):
-
-        current_job = get_job(
-            job_id
-        )
+        current_job = get_job(job_id)
 
         if not current_job:
             raise DownloadCancelled()
@@ -1712,17 +1693,13 @@ def download_video(job_id):
         ):
             raise DownloadPaused()
 
-        status = data.get(
-            "status"
-        )
+        status = data.get("status")
 
         if status == "downloading":
-
             downloaded = (
                 data.get(
                     "downloaded_bytes"
-                )
-                or 0
+                ) or 0
             )
 
             total = (
@@ -1741,28 +1718,15 @@ def download_video(job_id):
             percentage = 0
 
             if total:
-
                 percentage = min(
                     100,
                     max(
                         0,
                         (
-                            downloaded
-                            / total
+                            downloaded / total
                         ) * 100
                     )
                 )
-
-            speed = (
-                data.get(
-                    "speed"
-                )
-                or 0
-            )
-
-            eta = data.get(
-                "eta"
-            )
 
             update_job(
                 job_id,
@@ -1770,12 +1734,11 @@ def download_video(job_id):
                 progress=percentage,
                 downloaded_bytes=downloaded,
                 total_bytes=total,
-                speed=speed,
-                eta=eta
+                speed=data.get("speed") or 0,
+                eta=data.get("eta")
             )
 
         elif status == "finished":
-
             current_job = get_job(
                 job_id
             )
@@ -1803,39 +1766,29 @@ def download_video(job_id):
                 downloaded_bytes=(
                     data.get(
                         "downloaded_bytes"
-                    )
-                    or 0
+                    ) or 0
                 ),
                 speed=0,
                 eta=0
             )
 
     quality = str(
-        job.get("quality")
-        or ""
+        job.get("quality") or ""
     )
 
     output_format = str(
-        job.get("format")
-        or "mp4"
+        job.get("format") or "mp4"
     ).lower()
 
     is_audio = (
-        output_format
-        in AUDIO_FORMATS
+        output_format in AUDIO_FORMATS
     )
 
     if is_audio:
-
-        format_selector = (
-            "bestaudio/best"
-        )
+        format_selector = "bestaudio/best"
 
     elif quality.isdigit():
-
-        height = int(
-            quality
-        )
+        height = int(quality)
 
         format_selector = (
             f"bestvideo[height<={height}]+bestaudio/"
@@ -1843,7 +1796,6 @@ def download_video(job_id):
         )
 
     else:
-
         format_selector = (
             "bestvideo+bestaudio/best"
         )
@@ -1867,39 +1819,25 @@ def download_video(job_id):
     })
 
     if is_audio:
+        processor = {
+            "key": "FFmpegExtractAudio",
+            "preferredcodec": output_format
+        }
+
+        if output_format == "mp3":
+            processor["preferredquality"] = "192"
 
         options["postprocessors"] = [
-            {
-                "key": "FFmpegExtractAudio",
-                "preferredcodec": output_format,
-                "preferredquality": (
-                    "192"
-                    if output_format == "mp3"
-                    else None
-                )
-            }
+            processor
         ]
 
-        if output_format == "m4a":
-
-            options[
-                "postprocessors"
-            ][0].pop(
-                "preferredquality",
-                None
-            )
-
     else:
-
         options[
             "merge_output_format"
         ] = output_format
 
     try:
-
-        current_job = get_job(
-            job_id
-        )
+        current_job = get_job(job_id)
 
         if not current_job:
             return
@@ -1912,24 +1850,19 @@ def download_video(job_id):
         if current_job.get(
             "pause_requested"
         ):
-
             update_job(
                 job_id,
                 status="paused",
                 speed=0,
                 eta=None
             )
-
             return
 
-        partial_size = (
-            get_partial_download_size(
-                job_folder
-            )
+        partial_size = get_partial_download_size(
+            job_folder
         )
 
         if partial_size > 0:
-
             update_job(
                 job_id,
                 downloaded_bytes=partial_size
@@ -1941,17 +1874,12 @@ def download_video(job_id):
             speed=0
         )
 
-        with YoutubeDL(
-            options
-        ) as ydl:
+        with YoutubeDL(options) as ydl:
+            ydl.download([
+                job["url"]
+            ])
 
-            ydl.download(
-                [job["url"]]
-            )
-
-        current_job = get_job(
-            job_id
-        )
+        current_job = get_job(job_id)
 
         if not current_job:
             return
@@ -1966,26 +1894,17 @@ def download_video(job_id):
         ):
             raise DownloadPaused()
 
-        downloaded_file = (
-            find_downloaded_file(
-                job_folder
-            )
+        downloaded_file = find_downloaded_file(
+            job_folder
         )
 
         if not downloaded_file:
-
             raise RuntimeError(
                 "Download finished but the downloaded "
                 "file could not be found."
             )
 
-        filename = (
-            downloaded_file.name
-        )
-
-        file_size = (
-            downloaded_file.stat().st_size
-        )
+        file_size = downloaded_file.stat().st_size
 
         updated_job = update_job(
             job_id,
@@ -1995,14 +1914,13 @@ def download_video(job_id):
             total_bytes=file_size,
             speed=0,
             eta=0,
-            filename=filename,
+            filename=downloaded_file.name,
             error=None,
             pause_requested=False,
             cancel_requested=False
         )
 
         if updated_job:
-
             add_history(
                 updated_job
             )
@@ -2013,16 +1931,11 @@ def download_video(job_id):
             )
 
     except DownloadPaused:
-
-        partial_size = (
-            get_partial_download_size(
-                job_folder
-            )
+        partial_size = get_partial_download_size(
+            job_folder
         )
 
-        current_job = get_job(
-            job_id
-        )
+        current_job = get_job(job_id)
 
         update_job(
             job_id,
@@ -2044,7 +1957,6 @@ def download_video(job_id):
         )
 
     except DownloadCancelled:
-
         update_job(
             job_id,
             status="cancelled",
@@ -2054,15 +1966,10 @@ def download_video(job_id):
             pause_requested=False
         )
 
-        cleanup_job_folder(
-            job_id
-        )
+        cleanup_job_folder(job_id)
 
     except Exception as error:
-
-        current_job = get_job(
-            job_id
-        )
+        current_job = get_job(job_id)
 
         if not current_job:
             return
@@ -2070,7 +1977,6 @@ def download_video(job_id):
         if current_job.get(
             "cancel_requested"
         ):
-
             update_job(
                 job_id,
                 status="cancelled",
@@ -2080,18 +1986,13 @@ def download_video(job_id):
                 pause_requested=False
             )
 
-            cleanup_job_folder(
-                job_id
-            )
+            cleanup_job_folder(job_id)
 
         elif current_job.get(
             "pause_requested"
         ):
-
-            partial_size = (
-                get_partial_download_size(
-                    job_folder
-                )
+            partial_size = get_partial_download_size(
+                job_folder
             )
 
             update_job(
@@ -2106,7 +2007,6 @@ def download_video(job_id):
             )
 
         else:
-
             updated_job = update_job(
                 job_id,
                 status="failed",
@@ -2117,19 +2017,15 @@ def download_video(job_id):
             )
 
             if updated_job:
-
                 record_job_analytics(
                     "download_failed",
                     updated_job
                 )
 
-            cleanup_job_folder(
-                job_id
-            )
+            cleanup_job_folder(job_id)
 
 
 def start_download_thread(job_id):
-
     thread = threading.Thread(
         target=download_video,
         args=(job_id,),
@@ -2140,18 +2036,15 @@ def start_download_thread(job_id):
 
 
 # =========================================================
-# MAIN ROUTES
+# MAIN PAGE
 # =========================================================
 
 @app.route("/")
 def index():
-
     visitor_id = record_page_view()
 
     response = make_response(
-        render_template(
-            "index.html"
-        )
+        render_template("index.html")
     )
 
     return set_visitor_cookie(
@@ -2160,11 +2053,16 @@ def index():
     )
 
 
+# =========================================================
+# ANALYZE
+# =========================================================
+
 @app.route(
     "/api/analyze",
     methods=["POST"]
 )
 def analyze():
+    visitor_id = get_request_visitor_id()
 
     data = request.get_json(
         silent=True
@@ -2175,28 +2073,25 @@ def analyze():
     ).strip()
 
     if not url:
-
-        return jsonify({
-            "success": False,
-            "error": "Please enter a video URL."
-        }), 400
+        return json_with_visitor_cookie(
+            {
+                "success": False,
+                "error": "Please enter a video URL."
+            },
+            visitor_id,
+            400
+        )
 
     try:
-
-        options = get_ydl_options()
-
         with YoutubeDL(
-            options
+            get_ydl_options()
         ) as ydl:
-
             info = ydl.extract_info(
                 url,
                 download=False
             )
 
-        formats = build_format_list(
-            info
-        )
+        formats = build_format_list(info)
 
         qualities = get_available_qualities(
             formats
@@ -2214,68 +2109,74 @@ def analyze():
             formats
         )
 
-        thumbnail = info.get(
-            "thumbnail"
-        )
-
-        duration = info.get(
-            "duration"
-        )
-
-        title = (
-            info.get("title")
-            or "Untitled Video"
-        )
-
-        source = (
-            info.get("extractor_key")
-            or info.get("extractor")
-            or "Unknown"
-        )
-
         record_analytics_event(
             "analysis",
-            visitor_id=get_request_visitor_id()
+            visitor_id=visitor_id
         )
 
-        return jsonify({
-            "success": True,
-            "title": title,
-            "source": source,
-            "thumbnail": thumbnail,
-            "duration": duration,
-            "url": url,
-            "qualities": qualities,
-            "available_qualities": qualities,
-            "available_formats": available_formats,
-            "formats": available_formats,
-            "audio_formats": [
-                "mp3",
-                "m4a"
-            ],
-            "best_quality": best_quality,
-            "quality_sizes": quality_sizes,
-            "formats_detail": formats
-        })
+        return json_with_visitor_cookie(
+            {
+                "success": True,
+                "title": info.get(
+                    "title"
+                ) or "Untitled Video",
+                "source": (
+                    info.get(
+                        "extractor_key"
+                    )
+                    or info.get(
+                        "extractor"
+                    )
+                    or "Unknown"
+                ),
+                "thumbnail": info.get(
+                    "thumbnail"
+                ),
+                "duration": info.get(
+                    "duration"
+                ),
+                "url": url,
+                "qualities": qualities,
+                "available_qualities": qualities,
+                "available_formats": available_formats,
+                "formats": available_formats,
+                "audio_formats": [
+                    "mp3",
+                    "m4a"
+                ],
+                "best_quality": best_quality,
+                "quality_sizes": quality_sizes,
+                "formats_detail": formats
+            },
+            visitor_id
+        )
 
     except Exception as error:
-
         record_analytics_event(
             "analysis_failed",
-            visitor_id=get_request_visitor_id()
+            visitor_id=visitor_id
         )
 
-        return jsonify({
-            "success": False,
-            "error": str(error)
-        }), 500
+        return json_with_visitor_cookie(
+            {
+                "success": False,
+                "error": str(error)
+            },
+            visitor_id,
+            500
+        )
 
+
+# =========================================================
+# START DOWNLOAD
+# =========================================================
 
 @app.route(
     "/api/download",
     methods=["POST"]
 )
 def start_download():
+    visitor_id = get_request_visitor_id()
 
     data = request.get_json(
         silent=True
@@ -2286,7 +2187,7 @@ def start_download():
     ).strip()
 
     quality = str(
-        data.get("quality") or ""
+        data.get("quality") or "best"
     ).strip()
 
     video_format = str(
@@ -2297,89 +2198,81 @@ def start_download():
         "estimated_size"
     )
 
-    title = data.get(
-        "title"
-    )
-
-    source = data.get(
-        "source"
-    )
-
-    duration = data.get(
-        "duration"
-    )
-
-    if not url:
-
-        return jsonify({
-            "success": False,
-            "error": "Video URL is required."
-        }), 400
-
-    if not quality:
-        quality = "best"
-
-    if video_format not in AUDIO_FORMATS:
-
-        if video_format not in {
-            "mp4",
-            "webm",
-            "mkv",
-            "mov"
-        }:
-
-            video_format = "mp4"
+    if video_format not in (
+        VIDEO_FORMATS | AUDIO_FORMATS
+    ):
+        video_format = "mp4"
 
     if estimated_size:
-
         try:
-
             estimated_size = int(
                 estimated_size
             )
-
         except (
             TypeError,
             ValueError
         ):
-
             estimated_size = None
 
+    if not url:
+        return json_with_visitor_cookie(
+            {
+                "success": False,
+                "error": "Video URL is required."
+            },
+            visitor_id,
+            400
+        )
+
     with jobs_lock:
-
         for existing in jobs.values():
-
             if (
-                existing.get("url") == url
-                and existing.get("quality") == quality
-                and existing.get("format") == video_format
-                and existing.get("status") in {
+                existing.get(
+                    "visitor_id"
+                ) == visitor_id
+                and existing.get(
+                    "url"
+                ) == url
+                and existing.get(
+                    "quality"
+                ) == quality
+                and existing.get(
+                    "format"
+                ) == video_format
+                and existing.get(
+                    "status"
+                ) in {
                     "queued",
                     "downloading",
                     "processing",
-                    "paused"
+                    "paused",
+                    "pausing"
                 }
             ):
-
-                return jsonify({
-                    "success": False,
-                    "error":
-                        "This download is already "
-                        "in progress.",
-                    "job": dict(existing)
-                }), 409
+                return json_with_visitor_cookie(
+                    {
+                        "success": False,
+                        "error":
+                            "This download is already "
+                            "in progress.",
+                        "job": public_job(
+                            existing
+                        )
+                    },
+                    visitor_id,
+                    409
+                )
 
     job = create_job(
         url=url,
         quality=quality,
         video_format=video_format,
         estimated_size=estimated_size,
-        title=title,
-        source=source,
-        duration=duration
+        title=data.get("title"),
+        source=data.get("source"),
+        duration=data.get("duration"),
+        visitor_id=visitor_id
     )
-
-    visitor_id = get_request_visitor_id()
 
     user_agent = request.headers.get(
         "User-Agent",
@@ -2406,28 +2299,33 @@ def start_download():
         job["id"]
     )
 
-    response = jsonify({
-        "success": True,
-        "job": job
-    })
-
-    return set_visitor_cookie(
-        response,
+    return json_with_visitor_cookie(
+        {
+            "success": True,
+            "job": public_job(job)
+        },
         visitor_id
     )
 
+
+# =========================================================
+# USER JOBS
+# =========================================================
 
 @app.route(
     "/api/jobs",
     methods=["GET"]
 )
 def get_jobs():
+    visitor_id = get_request_visitor_id()
 
     with jobs_lock:
-
         data = [
-            dict(job)
+            public_job(job)
             for job in jobs.values()
+            if job.get(
+                "visitor_id"
+            ) == visitor_id
         ]
 
     data.sort(
@@ -2438,76 +2336,101 @@ def get_jobs():
         reverse=True
     )
 
-    return jsonify({
-        "success": True,
-        "jobs": data
-    })
+    return json_with_visitor_cookie(
+        {
+            "success": True,
+            "jobs": data
+        },
+        visitor_id
+    )
 
+
+# =========================================================
+# PROGRESS
+# =========================================================
 
 @app.route(
     "/api/progress/<job_id>",
     methods=["GET"]
 )
 def download_progress(job_id):
+    visitor_id = get_request_visitor_id()
 
-    job = get_job(
-        job_id
+    job = get_owned_job(
+        job_id,
+        visitor_id
     )
 
     if not job:
+        return json_with_visitor_cookie(
+            {
+                "success": False,
+                "error": "Download job not found."
+            },
+            visitor_id,
+            404
+        )
 
-        return jsonify({
-            "success": False,
-            "error": "Download job not found."
-        }), 404
+    return json_with_visitor_cookie(
+        {
+            "success": True,
+            "job": public_job(job)
+        },
+        visitor_id
+    )
 
-    return jsonify({
-        "success": True,
-        "job": job
-    })
 
+# =========================================================
+# PAUSE
+# =========================================================
 
 @app.route(
     "/api/pause/<job_id>",
     methods=["POST"]
 )
 def pause_download(job_id):
+    visitor_id = get_request_visitor_id()
 
-    job = get_job(
-        job_id
+    job = get_owned_job(
+        job_id,
+        visitor_id
     )
 
     if not job:
+        return json_with_visitor_cookie(
+            {
+                "success": False,
+                "error": "Download job not found."
+            },
+            visitor_id,
+            404
+        )
 
-        return jsonify({
-            "success": False,
-            "error": "Download job not found."
-        }), 404
+    if job.get("status") == "paused":
+        return json_with_visitor_cookie(
+            {
+                "success": True,
+                "message": "Download is already paused.",
+                "job": public_job(job)
+            },
+            visitor_id
+        )
 
-    status = job.get(
-        "status"
-    )
-
-    if status == "paused":
-
-        return jsonify({
-            "success": True,
-            "message": "Download is already paused.",
-            "job": job
-        })
-
-    if status not in {
+    if job.get("status") not in {
         "queued",
         "downloading",
         "processing"
     }:
-
-        return jsonify({
-            "success": False,
-            "error":
-                "Only active downloads can be paused.",
-            "job": job
-        }), 400
+        return json_with_visitor_cookie(
+            {
+                "success": False,
+                "error":
+                    "Only active downloads can be paused.",
+                "job": public_job(job)
+            },
+            visitor_id,
+            400
+        )
 
     update_job(
         job_id,
@@ -2515,45 +2438,63 @@ def pause_download(job_id):
         status="pausing"
     )
 
-    record_job_analytics(
-        "pause",
-        job
+    updated_job = get_owned_job(
+        job_id,
+        visitor_id
     )
 
-    return jsonify({
-        "success": True,
-        "message": "Pause requested.",
-        "job": get_job(job_id)
-    })
+    record_job_analytics(
+        "pause",
+        updated_job
+    )
 
+    return json_with_visitor_cookie(
+        {
+            "success": True,
+            "message": "Pause requested.",
+            "job": public_job(updated_job)
+        },
+        visitor_id
+    )
+
+
+# =========================================================
+# RESUME
+# =========================================================
 
 @app.route(
     "/api/resume/<job_id>",
     methods=["POST"]
 )
 def resume_download(job_id):
+    visitor_id = get_request_visitor_id()
 
-    job = get_job(
-        job_id
+    job = get_owned_job(
+        job_id,
+        visitor_id
     )
 
     if not job:
+        return json_with_visitor_cookie(
+            {
+                "success": False,
+                "error": "Download job not found."
+            },
+            visitor_id,
+            404
+        )
 
-        return jsonify({
-            "success": False,
-            "error": "Download job not found."
-        }), 404
-
-    if job.get(
-        "status"
-    ) != "paused":
-
-        return jsonify({
-            "success": False,
-            "error":
-                "Only paused downloads can be resumed.",
-            "job": job
-        }), 400
+    if job.get("status") != "paused":
+        return json_with_visitor_cookie(
+            {
+                "success": False,
+                "error":
+                    "Only paused downloads can be resumed.",
+                "job": public_job(job)
+            },
+            visitor_id,
+            400
+        )
 
     update_job(
         job_id,
@@ -2565,58 +2506,73 @@ def resume_download(job_id):
         eta=None
     )
 
+    updated_job = get_owned_job(
+        job_id,
+        visitor_id
+    )
+
     record_job_analytics(
         "resume",
-        job
+        updated_job
     )
 
     start_download_thread(
         job_id
     )
 
-    return jsonify({
-        "success": True,
-        "message": "Download resumed.",
-        "job": get_job(job_id)
-    })
+    return json_with_visitor_cookie(
+        {
+            "success": True,
+            "message": "Download resumed.",
+            "job": public_job(updated_job)
+        },
+        visitor_id
+    )
 
+
+# =========================================================
+# CANCEL
+# =========================================================
 
 @app.route(
     "/api/cancel/<job_id>",
     methods=["POST"]
 )
 def cancel_download(job_id):
+    visitor_id = get_request_visitor_id()
 
-    job = get_job(
-        job_id
+    job = get_owned_job(
+        job_id,
+        visitor_id
     )
 
     if not job:
+        return json_with_visitor_cookie(
+            {
+                "success": False,
+                "error": "Download job not found."
+            },
+            visitor_id,
+            404
+        )
 
-        return jsonify({
-            "success": False,
-            "error": "Download job not found."
-        }), 404
-
-    status = job.get(
-        "status"
-    )
-
-    if status in {
+    if job.get("status") in {
         "completed",
         "failed",
         "cancelled"
     }:
+        return json_with_visitor_cookie(
+            {
+                "success": False,
+                "error":
+                    "This download is no longer active.",
+                "job": public_job(job)
+            },
+            visitor_id,
+            400
+        )
 
-        return jsonify({
-            "success": False,
-            "error":
-                "This download is no longer active.",
-            "job": job
-        }), 400
-
-    if status == "paused":
-
+    if job.get("status") == "paused":
         update_job(
             job_id,
             cancel_requested=True,
@@ -2624,20 +2580,26 @@ def cancel_download(job_id):
             status="cancelled"
         )
 
+        updated_job = get_owned_job(
+            job_id,
+            visitor_id
+        )
+
         record_job_analytics(
             "cancel",
-            job
+            updated_job
         )
 
-        cleanup_job_folder(
-            job_id
-        )
+        cleanup_job_folder(job_id)
 
-        return jsonify({
-            "success": True,
-            "message": "Download cancelled.",
-            "job": get_job(job_id)
-        })
+        return json_with_visitor_cookie(
+            {
+                "success": True,
+                "message": "Download cancelled.",
+                "job": public_job(updated_job)
+            },
+            visitor_id
+        )
 
     update_job(
         job_id,
@@ -2645,82 +2607,78 @@ def cancel_download(job_id):
         pause_requested=False
     )
 
-    record_job_analytics(
-        "cancel",
-        job
+    updated_job = get_owned_job(
+        job_id,
+        visitor_id
     )
 
-    return jsonify({
-        "success": True,
-        "message": "Cancellation requested.",
-        "job": get_job(job_id)
-    })
+    record_job_analytics(
+        "cancel",
+        updated_job
+    )
 
+    return json_with_visitor_cookie(
+        {
+            "success": True,
+            "message": "Cancellation requested.",
+            "job": public_job(updated_job)
+        },
+        visitor_id
+    )
+
+
+# =========================================================
+# RETRY
+# =========================================================
 
 @app.route(
     "/api/retry/<job_id>",
     methods=["POST"]
 )
 def retry_download(job_id):
+    visitor_id = get_request_visitor_id()
 
-    old_job = get_job(
-        job_id
+    old_job = get_owned_job(
+        job_id,
+        visitor_id
     )
 
     if not old_job:
+        return json_with_visitor_cookie(
+            {
+                "success": False,
+                "error": "Download job not found."
+            },
+            visitor_id,
+            404
+        )
 
-        return jsonify({
-            "success": False,
-            "error": "Download job not found."
-        }), 404
-
-    if old_job.get(
-        "status"
-    ) not in {
+    if old_job.get("status") not in {
         "failed",
         "cancelled"
     }:
-
-        return jsonify({
-            "success": False,
-            "error":
-                "Only failed or cancelled "
-                "downloads can be retried."
-        }), 400
+        return json_with_visitor_cookie(
+            {
+                "success": False,
+                "error":
+                    "Only failed or cancelled "
+                    "downloads can be retried."
+            },
+            visitor_id,
+            400
+        )
 
     new_job = create_job(
-        url=old_job.get(
-            "url"
-        ),
-        quality=old_job.get(
-            "quality"
-        ),
-        video_format=old_job.get(
-            "format"
-        ),
+        url=old_job.get("url"),
+        quality=old_job.get("quality"),
+        video_format=old_job.get("format"),
         estimated_size=old_job.get(
             "estimated_size"
         ),
-        title=old_job.get(
-            "title"
-        ),
-        source=old_job.get(
-            "source"
-        ),
-        duration=old_job.get(
-            "duration"
-        )
-    )
-
-    visitor_id = (
-        request.cookies.get(
-            VISITOR_COOKIE
-        )
-        or get_job_analytics_context(
-            job_id
-        ).get(
-            "visitor_id"
-        )
+        title=old_job.get("title"),
+        source=old_job.get("source"),
+        duration=old_job.get("duration"),
+        visitor_id=visitor_id
     )
 
     user_agent = request.headers.get(
@@ -2753,68 +2711,83 @@ def retry_download(job_id):
         new_job["id"]
     )
 
-    return jsonify({
-        "success": True,
-        "job": new_job
-    })
+    return json_with_visitor_cookie(
+        {
+            "success": True,
+            "job": public_job(new_job)
+        },
+        visitor_id
+    )
 
+
+# =========================================================
+# DOWNLOAD FILE
+# =========================================================
 
 @app.route(
     "/api/download-file/<job_id>",
     methods=["GET"]
 )
 def download_file(job_id):
+    visitor_id = get_request_visitor_id()
 
-    job = get_job(
-        job_id
+    job = get_owned_job(
+        job_id,
+        visitor_id
     )
 
     if not job:
+        return json_with_visitor_cookie(
+            {
+                "success": False,
+                "error": "Download job not found."
+            },
+            visitor_id,
+            404
+        )
 
-        return jsonify({
-            "success": False,
-            "error": "Download job not found."
-        }), 404
+    if job.get("status") != "completed":
+        return json_with_visitor_cookie(
+            {
+                "success": False,
+                "error":
+                    "The download is not completed yet."
+            },
+            visitor_id,
+            400
+        )
 
-    if job.get(
-        "status"
-    ) != "completed":
-
-        return jsonify({
-            "success": False,
-            "error":
-                "The download is not completed yet."
-        }), 400
-
-    folder = (
-        DOWNLOAD_FOLDER
-        / job_id
-    )
+    folder = DOWNLOAD_FOLDER / job_id
 
     file_path = find_downloaded_file(
         folder
     )
 
-    if (
-        not file_path
-        or not file_path.exists()
-    ):
-
-        return jsonify({
-            "success": False,
-            "error":
-                "Downloaded file no longer exists."
-        }), 404
+    if not file_path or not file_path.exists():
+        return json_with_visitor_cookie(
+            {
+                "success": False,
+                "error":
+                    "Downloaded file no longer exists."
+            },
+            visitor_id,
+            404
+        )
 
     record_job_analytics(
         "file_served",
         job
     )
 
-    return send_file(
+    response = send_file(
         file_path,
         as_attachment=True,
         download_name=file_path.name
+    )
+
+    return set_visitor_cookie(
+        response,
+        visitor_id
     )
 
 
@@ -2827,22 +2800,17 @@ def download_file(job_id):
     methods=["GET"]
 )
 def analytics():
-
     return jsonify(
         get_analytics_stats()
     )
 
 
 # =========================================================
-# OVERVIEW
+# DASHBOARDS
 # =========================================================
 
-@app.route(
-    "/overview",
-    methods=["GET"]
-)
+@app.route("/overview")
 def overview_dashboard():
-
     visitor_id = record_page_view()
 
     response = make_response(
@@ -2857,16 +2825,8 @@ def overview_dashboard():
     )
 
 
-# =========================================================
-# ANALYTICS DASHBOARD
-# =========================================================
-
-@app.route(
-    "/analytics",
-    methods=["GET"]
-)
+@app.route("/analytics")
 def analytics_dashboard():
-
     visitor_id = record_page_view()
 
     response = make_response(
@@ -2881,16 +2841,8 @@ def analytics_dashboard():
     )
 
 
-# =========================================================
-# HISTORY DASHBOARD
-# =========================================================
-
-@app.route(
-    "/history",
-    methods=["GET"]
-)
+@app.route("/history")
 def history_dashboard():
-
     visitor_id = record_page_view()
 
     response = make_response(
@@ -2905,16 +2857,8 @@ def history_dashboard():
     )
 
 
-# =========================================================
-# SETTINGS DASHBOARD
-# =========================================================
-
-@app.route(
-    "/settings",
-    methods=["GET"]
-)
+@app.route("/settings")
 def settings_dashboard():
-
     visitor_id = record_page_view()
 
     response = make_response(
@@ -2930,7 +2874,82 @@ def settings_dashboard():
 
 
 # =========================================================
-# OTHER ROUTES
+# SETTINGS API
+# =========================================================
+
+@app.route(
+    "/api/settings",
+    methods=["GET"]
+)
+def get_settings():
+    visitor_id = get_request_visitor_id()
+
+    return json_with_visitor_cookie(
+        {
+            "success": True,
+            "settings": load_settings(
+                visitor_id
+            )
+        },
+        visitor_id
+    )
+
+
+@app.route(
+    "/api/settings",
+    methods=["PUT", "POST"]
+)
+def update_settings():
+    visitor_id = get_request_visitor_id()
+
+    data = request.get_json(
+        silent=True
+    ) or {}
+
+    current = load_settings(
+        visitor_id
+    )
+
+    if isinstance(data, dict):
+        current.update(data)
+
+    saved = save_settings(
+        visitor_id,
+        current
+    )
+
+    return json_with_visitor_cookie(
+        {
+            "success": True,
+            "settings": saved
+        },
+        visitor_id
+    )
+
+
+@app.route(
+    "/api/settings",
+    methods=["DELETE"]
+)
+def reset_settings():
+    visitor_id = get_request_visitor_id()
+
+    saved = save_settings(
+        visitor_id,
+        dict(DEFAULT_SETTINGS)
+    )
+
+    return json_with_visitor_cookie(
+        {
+            "success": True,
+            "settings": saved
+        },
+        visitor_id
+    )
+
+
+# =========================================================
+# CLEAR COMPLETED
 # =========================================================
 
 @app.route(
@@ -2938,58 +2957,61 @@ def settings_dashboard():
     methods=["DELETE"]
 )
 def clear_completed():
+    visitor_id = get_request_visitor_id()
 
     removed = []
 
     with jobs_lock:
-
         completed_ids = [
             job_id
             for job_id, job in jobs.items()
-            if job.get(
-                "status"
-            ) == "completed"
+            if (
+                job.get(
+                    "visitor_id"
+                ) == visitor_id
+                and job.get(
+                    "status"
+                ) == "completed"
+            )
         ]
 
         for job_id in completed_ids:
+            removed.append(job_id)
 
-            removed.append(
-                job_id
-            )
-
-            del jobs[
-                job_id
-            ]
+            del jobs[job_id]
 
     for job_id in removed:
-
         remove_job_analytics_context(
             job_id
         )
 
-    return jsonify({
-        "success": True,
-        "removed": removed
-    })
+    return json_with_visitor_cookie(
+        {
+            "success": True,
+            "removed": removed
+        },
+        visitor_id
+    )
 
+
+# =========================================================
+# HISTORY API
+# =========================================================
 
 @app.route(
     "/api/history",
     methods=["GET"]
 )
 def get_history():
-
     visitor_id = get_request_visitor_id()
 
-    response = jsonify({
-        "success": True,
-        "history": load_history(
-            visitor_id
-        )
-    })
-
-    return set_visitor_cookie(
-        response,
+    return json_with_visitor_cookie(
+        {
+            "success": True,
+            "history": load_history(
+                visitor_id
+            )
+        },
         visitor_id
     )
 
@@ -2999,7 +3021,6 @@ def get_history():
     methods=["DELETE"]
 )
 def clear_history():
-
     visitor_id = get_request_visitor_id()
 
     save_history(
@@ -3007,12 +3028,10 @@ def clear_history():
         []
     )
 
-    response = jsonify({
-        "success": True
-    })
-
-    return set_visitor_cookie(
-        response,
+    return json_with_visitor_cookie(
+        {
+            "success": True
+        },
         visitor_id
     )
 
@@ -3022,7 +3041,6 @@ def clear_history():
     methods=["DELETE"]
 )
 def delete_history_item(history_id):
-
     visitor_id = get_request_visitor_id()
 
     history = load_history(
@@ -3034,9 +3052,7 @@ def delete_history_item(history_id):
         for item in history
         if str(
             item.get("id")
-        ) != str(
-            history_id
-        )
+        ) != str(history_id)
     ]
 
     save_history(
@@ -3044,12 +3060,10 @@ def delete_history_item(history_id):
         updated
     )
 
-    response = jsonify({
-        "success": True
-    })
-
-    return set_visitor_cookie(
-        response,
+    return json_with_visitor_cookie(
+        {
+            "success": True
+        },
         visitor_id
     )
 
@@ -3059,57 +3073,51 @@ def delete_history_item(history_id):
 # =========================================================
 
 if __name__ == "__main__":
-
     print()
-
     print("=" * 55)
-
     print("VDownloader")
-
     print("=" * 55)
-
     print(
         "Server: http://127.0.0.1:5000"
     )
-
     print(
         "Pause/Resume backend enabled"
     )
-
     print(
         "Audio-only downloads enabled"
     )
-
     print(
         "Analytics system enabled"
     )
-
+    print(
+        "Visitor-isolated jobs enabled"
+    )
+    print(
+        "Visitor-isolated history enabled"
+    )
+    print(
+        "Visitor-isolated settings enabled"
+    )
     print(
         "Overview dashboard: "
         "http://127.0.0.1:5000/overview"
     )
-
     print(
         "Analytics dashboard: "
         "http://127.0.0.1:5000/analytics"
     )
-
     print(
         "History dashboard: "
         "http://127.0.0.1:5000/history"
     )
-
     print(
         "Settings dashboard: "
         "http://127.0.0.1:5000/settings"
     )
-
     print(
         "Analytics database: analytics.db"
     )
-
     print("=" * 55)
-
     print()
 
     app.run(
