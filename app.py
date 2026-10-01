@@ -99,6 +99,13 @@ IMPERSONATE_TARGET = ImpersonateTarget(
 
 
 # =========================================================
+# NODE.JS
+# =========================================================
+
+NODE_PATH = shutil.which("node")
+
+
+# =========================================================
 # FORMATS
 # =========================================================
 
@@ -129,9 +136,13 @@ VISITOR_COOKIE = "vdownloader_visitor"
 # =========================================================
 
 jobs = {}
+
 jobs_lock = threading.Lock()
 
+history_lock = threading.RLock()
+
 analytics_job_context = {}
+
 analytics_job_context_lock = threading.Lock()
 
 
@@ -162,6 +173,7 @@ def now_string():
 # =========================================================
 
 def get_analytics_connection():
+
     connection = sqlite3.connect(
         str(ANALYTICS_DB),
         timeout=30
@@ -181,9 +193,11 @@ def get_analytics_connection():
 
 
 def initialize_analytics():
+
     connection = get_analytics_connection()
 
     try:
+
         connection.execute(
             """
             CREATE TABLE IF NOT EXISTS visitors (
@@ -243,6 +257,7 @@ def initialize_analytics():
 
 
 def detect_device(user_agent):
+
     user_agent = str(
         user_agent or ""
     ).lower()
@@ -264,6 +279,7 @@ def detect_device(user_agent):
 
 
 def detect_browser(user_agent):
+
     user_agent = str(
         user_agent or ""
     ).lower()
@@ -293,6 +309,7 @@ def detect_browser(user_agent):
 
 
 def get_request_visitor_id():
+
     visitor_id = request.cookies.get(
         VISITOR_COOKIE
     )
@@ -311,13 +328,16 @@ def record_analytics_event(
     device=None,
     browser=None
 ):
+
     try:
+
         visitor_id = (
             visitor_id
             or uuid.uuid4().hex
         )
 
         if device is None:
+
             device = detect_device(
                 request.headers.get(
                     "User-Agent",
@@ -326,6 +346,7 @@ def record_analytics_event(
             )
 
         if browser is None:
+
             browser = detect_browser(
                 request.headers.get(
                     "User-Agent",
@@ -334,6 +355,7 @@ def record_analytics_event(
             )
 
         if format_value:
+
             format_value = str(
                 format_value
             ).lower()
@@ -353,6 +375,7 @@ def record_analytics_event(
         connection = get_analytics_connection()
 
         try:
+
             connection.execute(
                 """
                 INSERT OR IGNORE INTO visitors (
@@ -426,6 +449,7 @@ def record_analytics_event(
 
 
 def record_page_view():
+
     visitor_id = get_request_visitor_id()
 
     user_agent = request.headers.get(
@@ -451,6 +475,7 @@ def set_visitor_cookie(
     response,
     visitor_id
 ):
+
     response.set_cookie(
         VISITOR_COOKIE,
         visitor_id,
@@ -469,7 +494,9 @@ def set_job_analytics_context(
     device=None,
     browser=None
 ):
+
     with analytics_job_context_lock:
+
         analytics_job_context[job_id] = {
             "visitor_id": visitor_id,
             "device": device,
@@ -478,7 +505,9 @@ def set_job_analytics_context(
 
 
 def get_job_analytics_context(job_id):
+
     with analytics_job_context_lock:
+
         context = analytics_job_context.get(
             job_id
         )
@@ -490,7 +519,9 @@ def get_job_analytics_context(job_id):
 
 
 def remove_job_analytics_context(job_id):
+
     with analytics_job_context_lock:
+
         analytics_job_context.pop(
             job_id,
             None
@@ -501,6 +532,7 @@ def record_job_analytics(
     event_type,
     job
 ):
+
     if not job:
         return
 
@@ -529,6 +561,7 @@ def record_job_analytics(
 
 
 def get_analytics_stats():
+
     today = datetime.now().date()
 
     start_date = (
@@ -538,6 +571,7 @@ def get_analytics_stats():
     connection = get_analytics_connection()
 
     try:
+
         event_counts = {}
 
         rows = connection.execute(
@@ -551,6 +585,7 @@ def get_analytics_stats():
         ).fetchall()
 
         for row in rows:
+
             event_counts[
                 row["event_type"]
             ] = row["total"]
@@ -591,6 +626,7 @@ def get_analytics_stats():
         }
 
         for row in format_rows:
+
             fmt = str(
                 row["format"]
             ).lower()
@@ -621,6 +657,7 @@ def get_analytics_stats():
         }
 
         for row in completed_format_rows:
+
             fmt = str(
                 row["format"]
             ).lower()
@@ -644,6 +681,7 @@ def get_analytics_stats():
         devices = {}
 
         for row in device_rows:
+
             devices[
                 row["device"]
             ] = row["total"]
@@ -664,6 +702,7 @@ def get_analytics_stats():
         browsers = {}
 
         for row in browser_rows:
+
             browsers[
                 row["browser"]
             ] = row["total"]
@@ -712,6 +751,7 @@ def get_analytics_stats():
         daily = {}
 
         for index in range(30):
+
             current_date = (
                 today
                 - timedelta(
@@ -747,24 +787,30 @@ def get_analytics_stats():
             }
 
         for row in daily_rows:
+
             day = row["event_date"]
 
             if day not in daily:
                 continue
 
             event_type = row["event_type"]
+
             count = row["total"]
 
             if event_type == "page_view":
+
                 daily[day]["page_views"] += count
 
             elif event_type == "analysis":
+
                 daily[day]["analyses"] += count
 
             elif event_type == "analysis_failed":
+
                 daily[day]["analysis_failures"] += count
 
             elif event_type == "download_started":
+
                 daily[day]["downloads_started"] += count
 
                 download_type = row[
@@ -772,10 +818,13 @@ def get_analytics_stats():
                 ]
 
                 if download_type == "audio":
+
                     daily[day][
                         "audio_downloads"
                     ] += count
+
                 else:
+
                     daily[day][
                         "video_downloads"
                     ] += count
@@ -783,21 +832,25 @@ def get_analytics_stats():
                 fmt = row["format"]
 
                 if fmt in daily[day]["formats"]:
+
                     daily[day]["formats"][
                         fmt
                     ] += count
 
             elif event_type == "download_completed":
+
                 daily[day][
                     "downloads_completed"
                 ] += count
 
             elif event_type == "download_failed":
+
                 daily[day][
                     "downloads_failed"
                 ] += count
 
             elif event_type == "file_served":
+
                 daily[day][
                     "files_served"
                 ] += count
@@ -808,11 +861,13 @@ def get_analytics_stats():
                 "cancel",
                 "retry"
             }:
+
                 daily[day]["actions"][
                     event_type
                 ] += count
 
         for day, count in daily_visitors.items():
+
             if day in daily:
                 daily[day]["visitors"] = count
 
@@ -884,12 +939,15 @@ def get_analytics_stats():
         ).fetchall()
 
         for row in download_type_rows:
+
             if row["download_type"] == "audio":
+
                 totals[
                     "audio_downloads"
                 ] = row["total"]
 
             elif row["download_type"] == "video":
+
                 totals[
                     "video_downloads"
                 ] = row["total"]
@@ -960,35 +1018,19 @@ initialize_analytics()
 # =========================================================
 
 def get_ydl_options():
-    return {
+
+    options = {
         "quiet": True,
         "no_warnings": True,
         "noplaylist": True,
-
         "retries": 3,
         "fragment_retries": 3,
-
-        "js_runtimes": {
-            "deno": {}
-        },
 
         "remote_components": [
             "ejs:github"
         ],
 
         "impersonate": IMPERSONATE_TARGET,
-
-        "extractor_args": {
-            "youtube": {
-                "player_client": [
-                    "android_vr",
-                    "web_embedded"
-                ],
-                "pot_server": [
-                    "bgutil:http://127.0.0.1:4416"
-                ]
-            }
-        },
 
         "http_headers": {
             "User-Agent": USER_AGENT
@@ -997,12 +1039,27 @@ def get_ydl_options():
         "ffmpeg_location": FFMPEG_LOCATION
     }
 
+    if NODE_PATH:
+
+        options["js_runtimes"] = {
+            "node": {
+                "path": NODE_PATH
+            }
+        }
+
+    return options
+
+
+# =========================================================
+# FORMAT HELPERS
+# =========================================================
 
 def extract_quality(
     format_id,
     format_note,
     height
 ):
+
     text = (
         f"{format_id or ''} "
         f"{format_note or ''}"
@@ -1014,23 +1071,29 @@ def extract_quality(
     )
 
     if match:
+
         return match.group(1)
 
     if height:
+
         try:
+
             return str(
                 int(height)
             )
+
         except (
             TypeError,
             ValueError
         ):
+
             pass
 
     return None
 
 
 def get_format_size(fmt):
+
     value = fmt.get(
         "filesize"
     )
@@ -1049,12 +1112,14 @@ def get_format_size(fmt):
 
 
 def build_format_list(info):
+
     formats = []
 
     for fmt in info.get(
         "formats",
         []
     ):
+
         height = fmt.get(
             "height"
         )
@@ -1063,12 +1128,14 @@ def build_format_list(info):
             continue
 
         try:
+
             height = int(height)
 
         except (
             TypeError,
             ValueError
         ):
+
             continue
 
         vcodec = fmt.get(
@@ -1089,6 +1156,7 @@ def build_format_list(info):
         )
 
         if not quality:
+
             quality = str(height)
 
         size = get_format_size(
@@ -1131,6 +1199,7 @@ def build_format_list(info):
     unique = {}
 
     for fmt in formats:
+
         key = (
             fmt["quality"],
             fmt["ext"],
@@ -1142,7 +1211,9 @@ def build_format_list(info):
         )
 
         if not existing:
+
             unique[key] = fmt
+
             continue
 
         current_size = (
@@ -1160,6 +1231,7 @@ def build_format_list(info):
         )
 
         if current_size > existing_size:
+
             unique[key] = fmt
 
     return list(
@@ -1168,14 +1240,17 @@ def build_format_list(info):
 
 
 def get_available_qualities(formats):
+
     values = set()
 
     for fmt in formats:
+
         quality = fmt.get(
             "quality"
         )
 
         if quality:
+
             values.add(
                 str(quality)
             )
@@ -1194,9 +1269,11 @@ def get_available_qualities(formats):
 
 
 def get_available_extensions(formats):
+
     values = []
 
     for fmt in formats:
+
         ext = str(
             fmt.get("ext") or ""
         ).lower()
@@ -1205,6 +1282,7 @@ def get_available_extensions(formats):
             ext
             and ext not in values
         ):
+
             values.append(ext)
 
     preferred = []
@@ -1215,17 +1293,22 @@ def get_available_extensions(formats):
         "mkv",
         "mov"
     ]:
+
         if ext in values:
+
             preferred.append(ext)
 
     for ext in values:
+
         if ext not in preferred:
+
             preferred.append(ext)
 
     return preferred
 
 
 def get_best_quality(formats):
+
     qualities = get_available_qualities(
         formats
     )
@@ -1237,9 +1320,11 @@ def get_best_quality(formats):
 
 
 def get_quality_sizes(formats):
+
     sizes = {}
 
     for fmt in formats:
+
         quality = str(
             fmt.get("quality")
             or ""
@@ -1260,6 +1345,7 @@ def get_quality_sizes(formats):
             current is None
             or size > current
         ):
+
             sizes[quality] = size
 
     return sizes
@@ -1269,86 +1355,162 @@ def get_quality_sizes(formats):
 # HISTORY
 # =========================================================
 
-def load_history():
+def _read_history_data():
+
     if not HISTORY_FILE.exists():
-        return []
+        return {}
 
     try:
+
         with open(
             HISTORY_FILE,
             "r",
             encoding="utf-8"
         ) as file:
+
             data = json.load(file)
 
-        if isinstance(
-            data,
-            list
-        ):
+        if isinstance(data, dict):
             return data
+
+        if isinstance(data, list):
+
+            return {
+                "__legacy_shared__": data
+            }
 
     except Exception:
         pass
 
+    return {}
+
+
+def load_history(visitor_id):
+
+    if not visitor_id:
+        return []
+
+    with history_lock:
+
+        data = _read_history_data()
+
+        history = data.get(
+            str(visitor_id),
+            []
+        )
+
+        if isinstance(history, list):
+            return history
+
     return []
 
 
-def save_history(history):
-    with open(
-        HISTORY_FILE,
-        "w",
-        encoding="utf-8"
-    ) as file:
-        json.dump(
-            history,
-            file,
-            indent=2
+def save_history(
+    visitor_id,
+    history
+):
+
+    if not visitor_id:
+        return
+
+    with history_lock:
+
+        data = _read_history_data()
+
+        data[str(visitor_id)] = (
+            history
+            if isinstance(history, list)
+            else []
         )
+
+        with open(
+            HISTORY_FILE,
+            "w",
+            encoding="utf-8"
+        ) as file:
+
+            json.dump(
+                data,
+                file,
+                indent=2
+            )
 
 
 def add_history(job):
-    history = load_history()
 
-    history.insert(
-        0,
-        {
-            "id": uuid.uuid4().hex[:10],
-            "title": (
-                job.get("title")
-                or "Downloaded Video"
-            ),
-            "source": (
-                job.get("source")
-                or "Unknown"
-            ),
-            "duration": job.get(
-                "duration"
-            ),
-            "quality": job.get(
-                "quality"
-            ),
-            "format": job.get(
-                "format"
-            ),
-            "size": (
-                job.get(
-                    "downloaded_bytes"
-                )
-                or job.get(
-                    "total_bytes"
-                )
-                or 0
-            ),
-            "filename": job.get(
-                "filename"
-            ),
-            "timestamp": now_string()
-        }
+    context = get_job_analytics_context(
+        job.get("id")
     )
 
-    save_history(
-        history
+    visitor_id = context.get(
+        "visitor_id"
     )
+
+    if not visitor_id:
+        return
+
+    with history_lock:
+
+        data = _read_history_data()
+
+        history = data.get(
+            str(visitor_id),
+            []
+        )
+
+        if not isinstance(history, list):
+            history = []
+
+        history.insert(
+            0,
+            {
+                "id": uuid.uuid4().hex[:10],
+                "title": (
+                    job.get("title")
+                    or "Downloaded Video"
+                ),
+                "source": (
+                    job.get("source")
+                    or "Unknown"
+                ),
+                "duration": job.get(
+                    "duration"
+                ),
+                "quality": job.get(
+                    "quality"
+                ),
+                "format": job.get(
+                    "format"
+                ),
+                "size": (
+                    job.get(
+                        "downloaded_bytes"
+                    )
+                    or job.get(
+                        "total_bytes"
+                    )
+                    or 0
+                ),
+                "filename": job.get(
+                    "filename"
+                ),
+                "timestamp": now_string()
+            }
+        )
+
+        data[str(visitor_id)] = history
+
+        with open(
+            HISTORY_FILE,
+            "w",
+            encoding="utf-8"
+        ) as file:
+
+            json.dump(
+                data,
+                file,
+                indent=2
+            )
 
 
 # =========================================================
@@ -1356,7 +1518,9 @@ def add_history(job):
 # =========================================================
 
 def get_job(job_id):
+
     with jobs_lock:
+
         return jobs.get(
             job_id
         )
@@ -1366,7 +1530,9 @@ def update_job(
     job_id,
     **updates
 ):
+
     with jobs_lock:
+
         job = jobs.get(
             job_id
         )
@@ -1392,6 +1558,7 @@ def create_job(
     source=None,
     duration=None
 ):
+
     job_id = uuid.uuid4().hex
 
     video_format = str(
@@ -1432,19 +1599,23 @@ def create_job(
     }
 
     with jobs_lock:
+
         jobs[job_id] = job
 
     return job
 
 
 def cleanup_job_folder(job_id):
+
     folder = (
         DOWNLOAD_FOLDER
         / job_id
     )
 
     if folder.exists():
+
         try:
+
             shutil.rmtree(
                 folder,
                 ignore_errors=True
@@ -1455,12 +1626,14 @@ def cleanup_job_folder(job_id):
 
 
 def find_downloaded_file(folder):
+
     if not folder.exists():
         return None
 
     files = []
 
     for path in folder.rglob("*"):
+
         if path.is_file():
             files.append(path)
 
@@ -1476,16 +1649,19 @@ def find_downloaded_file(folder):
 
 
 def get_partial_download_size(folder):
+
     if not folder.exists():
         return 0
 
     total = 0
 
     for path in folder.rglob("*"):
+
         if not path.is_file():
             continue
 
         try:
+
             total += path.stat().st_size
 
         except OSError:
@@ -1499,6 +1675,7 @@ def get_partial_download_size(folder):
 # =========================================================
 
 def download_video(job_id):
+
     job = get_job(
         job_id
     )
@@ -1517,6 +1694,7 @@ def download_video(job_id):
     )
 
     def progress_hook(data):
+
         current_job = get_job(
             job_id
         )
@@ -1539,6 +1717,7 @@ def download_video(job_id):
         )
 
         if status == "downloading":
+
             downloaded = (
                 data.get(
                     "downloaded_bytes"
@@ -1562,6 +1741,7 @@ def download_video(job_id):
             percentage = 0
 
             if total:
+
                 percentage = min(
                     100,
                     max(
@@ -1595,6 +1775,7 @@ def download_video(job_id):
             )
 
         elif status == "finished":
+
             current_job = get_job(
                 job_id
             )
@@ -1645,11 +1826,13 @@ def download_video(job_id):
     )
 
     if is_audio:
+
         format_selector = (
             "bestaudio/best"
         )
 
     elif quality.isdigit():
+
         height = int(
             quality
         )
@@ -1660,6 +1843,7 @@ def download_video(job_id):
         )
 
     else:
+
         format_selector = (
             "bestvideo+bestaudio/best"
         )
@@ -1683,6 +1867,7 @@ def download_video(job_id):
     })
 
     if is_audio:
+
         options["postprocessors"] = [
             {
                 "key": "FFmpegExtractAudio",
@@ -1696,6 +1881,7 @@ def download_video(job_id):
         ]
 
         if output_format == "m4a":
+
             options[
                 "postprocessors"
             ][0].pop(
@@ -1704,11 +1890,13 @@ def download_video(job_id):
             )
 
     else:
+
         options[
             "merge_output_format"
         ] = output_format
 
     try:
+
         current_job = get_job(
             job_id
         )
@@ -1724,12 +1912,14 @@ def download_video(job_id):
         if current_job.get(
             "pause_requested"
         ):
+
             update_job(
                 job_id,
                 status="paused",
                 speed=0,
                 eta=None
             )
+
             return
 
         partial_size = (
@@ -1739,6 +1929,7 @@ def download_video(job_id):
         )
 
         if partial_size > 0:
+
             update_job(
                 job_id,
                 downloaded_bytes=partial_size
@@ -1753,6 +1944,7 @@ def download_video(job_id):
         with YoutubeDL(
             options
         ) as ydl:
+
             ydl.download(
                 [job["url"]]
             )
@@ -1781,6 +1973,7 @@ def download_video(job_id):
         )
 
         if not downloaded_file:
+
             raise RuntimeError(
                 "Download finished but the downloaded "
                 "file could not be found."
@@ -1809,6 +2002,7 @@ def download_video(job_id):
         )
 
         if updated_job:
+
             add_history(
                 updated_job
             )
@@ -1819,6 +2013,7 @@ def download_video(job_id):
             )
 
     except DownloadPaused:
+
         partial_size = (
             get_partial_download_size(
                 job_folder
@@ -1849,6 +2044,7 @@ def download_video(job_id):
         )
 
     except DownloadCancelled:
+
         update_job(
             job_id,
             status="cancelled",
@@ -1863,6 +2059,7 @@ def download_video(job_id):
         )
 
     except Exception as error:
+
         current_job = get_job(
             job_id
         )
@@ -1873,6 +2070,7 @@ def download_video(job_id):
         if current_job.get(
             "cancel_requested"
         ):
+
             update_job(
                 job_id,
                 status="cancelled",
@@ -1889,6 +2087,7 @@ def download_video(job_id):
         elif current_job.get(
             "pause_requested"
         ):
+
             partial_size = (
                 get_partial_download_size(
                     job_folder
@@ -1907,6 +2106,7 @@ def download_video(job_id):
             )
 
         else:
+
             updated_job = update_job(
                 job_id,
                 status="failed",
@@ -1917,6 +2117,7 @@ def download_video(job_id):
             )
 
             if updated_job:
+
                 record_job_analytics(
                     "download_failed",
                     updated_job
@@ -1928,6 +2129,7 @@ def download_video(job_id):
 
 
 def start_download_thread(job_id):
+
     thread = threading.Thread(
         target=download_video,
         args=(job_id,),
@@ -1943,6 +2145,7 @@ def start_download_thread(job_id):
 
 @app.route("/")
 def index():
+
     visitor_id = record_page_view()
 
     response = make_response(
@@ -1962,6 +2165,7 @@ def index():
     methods=["POST"]
 )
 def analyze():
+
     data = request.get_json(
         silent=True
     ) or {}
@@ -1971,17 +2175,20 @@ def analyze():
     ).strip()
 
     if not url:
+
         return jsonify({
             "success": False,
             "error": "Please enter a video URL."
         }), 400
 
     try:
+
         options = get_ydl_options()
 
         with YoutubeDL(
             options
         ) as ydl:
+
             info = ydl.extract_info(
                 url,
                 download=False
@@ -2052,6 +2259,7 @@ def analyze():
         })
 
     except Exception as error:
+
         record_analytics_event(
             "analysis_failed",
             visitor_id=get_request_visitor_id()
@@ -2068,6 +2276,7 @@ def analyze():
     methods=["POST"]
 )
 def start_download():
+
     data = request.get_json(
         silent=True
     ) or {}
@@ -2101,6 +2310,7 @@ def start_download():
     )
 
     if not url:
+
         return jsonify({
             "success": False,
             "error": "Video URL is required."
@@ -2110,16 +2320,20 @@ def start_download():
         quality = "best"
 
     if video_format not in AUDIO_FORMATS:
+
         if video_format not in {
             "mp4",
             "webm",
             "mkv",
             "mov"
         }:
+
             video_format = "mp4"
 
     if estimated_size:
+
         try:
+
             estimated_size = int(
                 estimated_size
             )
@@ -2128,10 +2342,13 @@ def start_download():
             TypeError,
             ValueError
         ):
+
             estimated_size = None
 
     with jobs_lock:
+
         for existing in jobs.values():
+
             if (
                 existing.get("url") == url
                 and existing.get("quality") == quality
@@ -2143,6 +2360,7 @@ def start_download():
                     "paused"
                 }
             ):
+
                 return jsonify({
                     "success": False,
                     "error":
@@ -2204,7 +2422,9 @@ def start_download():
     methods=["GET"]
 )
 def get_jobs():
+
     with jobs_lock:
+
         data = [
             dict(job)
             for job in jobs.values()
@@ -2229,11 +2449,13 @@ def get_jobs():
     methods=["GET"]
 )
 def download_progress(job_id):
+
     job = get_job(
         job_id
     )
 
     if not job:
+
         return jsonify({
             "success": False,
             "error": "Download job not found."
@@ -2250,11 +2472,13 @@ def download_progress(job_id):
     methods=["POST"]
 )
 def pause_download(job_id):
+
     job = get_job(
         job_id
     )
 
     if not job:
+
         return jsonify({
             "success": False,
             "error": "Download job not found."
@@ -2265,6 +2489,7 @@ def pause_download(job_id):
     )
 
     if status == "paused":
+
         return jsonify({
             "success": True,
             "message": "Download is already paused.",
@@ -2276,6 +2501,7 @@ def pause_download(job_id):
         "downloading",
         "processing"
     }:
+
         return jsonify({
             "success": False,
             "error":
@@ -2306,11 +2532,13 @@ def pause_download(job_id):
     methods=["POST"]
 )
 def resume_download(job_id):
+
     job = get_job(
         job_id
     )
 
     if not job:
+
         return jsonify({
             "success": False,
             "error": "Download job not found."
@@ -2319,6 +2547,7 @@ def resume_download(job_id):
     if job.get(
         "status"
     ) != "paused":
+
         return jsonify({
             "success": False,
             "error":
@@ -2357,11 +2586,13 @@ def resume_download(job_id):
     methods=["POST"]
 )
 def cancel_download(job_id):
+
     job = get_job(
         job_id
     )
 
     if not job:
+
         return jsonify({
             "success": False,
             "error": "Download job not found."
@@ -2376,6 +2607,7 @@ def cancel_download(job_id):
         "failed",
         "cancelled"
     }:
+
         return jsonify({
             "success": False,
             "error":
@@ -2384,6 +2616,7 @@ def cancel_download(job_id):
         }), 400
 
     if status == "paused":
+
         update_job(
             job_id,
             cancel_requested=True,
@@ -2429,11 +2662,13 @@ def cancel_download(job_id):
     methods=["POST"]
 )
 def retry_download(job_id):
+
     old_job = get_job(
         job_id
     )
 
     if not old_job:
+
         return jsonify({
             "success": False,
             "error": "Download job not found."
@@ -2445,6 +2680,7 @@ def retry_download(job_id):
         "failed",
         "cancelled"
     }:
+
         return jsonify({
             "success": False,
             "error":
@@ -2528,11 +2764,13 @@ def retry_download(job_id):
     methods=["GET"]
 )
 def download_file(job_id):
+
     job = get_job(
         job_id
     )
 
     if not job:
+
         return jsonify({
             "success": False,
             "error": "Download job not found."
@@ -2541,6 +2779,7 @@ def download_file(job_id):
     if job.get(
         "status"
     ) != "completed":
+
         return jsonify({
             "success": False,
             "error":
@@ -2560,6 +2799,7 @@ def download_file(job_id):
         not file_path
         or not file_path.exists()
     ):
+
         return jsonify({
             "success": False,
             "error":
@@ -2587,6 +2827,7 @@ def download_file(job_id):
     methods=["GET"]
 )
 def analytics():
+
     return jsonify(
         get_analytics_stats()
     )
@@ -2601,6 +2842,7 @@ def analytics():
     methods=["GET"]
 )
 def overview_dashboard():
+
     visitor_id = record_page_view()
 
     response = make_response(
@@ -2624,6 +2866,7 @@ def overview_dashboard():
     methods=["GET"]
 )
 def analytics_dashboard():
+
     visitor_id = record_page_view()
 
     response = make_response(
@@ -2647,6 +2890,7 @@ def analytics_dashboard():
     methods=["GET"]
 )
 def history_dashboard():
+
     visitor_id = record_page_view()
 
     response = make_response(
@@ -2670,6 +2914,7 @@ def history_dashboard():
     methods=["GET"]
 )
 def settings_dashboard():
+
     visitor_id = record_page_view()
 
     response = make_response(
@@ -2693,9 +2938,11 @@ def settings_dashboard():
     methods=["DELETE"]
 )
 def clear_completed():
+
     removed = []
 
     with jobs_lock:
+
         completed_ids = [
             job_id
             for job_id, job in jobs.items()
@@ -2705,6 +2952,7 @@ def clear_completed():
         ]
 
         for job_id in completed_ids:
+
             removed.append(
                 job_id
             )
@@ -2714,6 +2962,7 @@ def clear_completed():
             ]
 
     for job_id in removed:
+
         remove_job_analytics_context(
             job_id
         )
@@ -2729,10 +2978,20 @@ def clear_completed():
     methods=["GET"]
 )
 def get_history():
-    return jsonify({
+
+    visitor_id = get_request_visitor_id()
+
+    response = jsonify({
         "success": True,
-        "history": load_history()
+        "history": load_history(
+            visitor_id
+        )
     })
+
+    return set_visitor_cookie(
+        response,
+        visitor_id
+    )
 
 
 @app.route(
@@ -2740,11 +2999,22 @@ def get_history():
     methods=["DELETE"]
 )
 def clear_history():
-    save_history([])
 
-    return jsonify({
+    visitor_id = get_request_visitor_id()
+
+    save_history(
+        visitor_id,
+        []
+    )
+
+    response = jsonify({
         "success": True
     })
+
+    return set_visitor_cookie(
+        response,
+        visitor_id
+    )
 
 
 @app.route(
@@ -2752,7 +3022,12 @@ def clear_history():
     methods=["DELETE"]
 )
 def delete_history_item(history_id):
-    history = load_history()
+
+    visitor_id = get_request_visitor_id()
+
+    history = load_history(
+        visitor_id
+    )
 
     updated = [
         item
@@ -2765,12 +3040,18 @@ def delete_history_item(history_id):
     ]
 
     save_history(
+        visitor_id,
         updated
     )
 
-    return jsonify({
+    response = jsonify({
         "success": True
     })
+
+    return set_visitor_cookie(
+        response,
+        visitor_id
+    )
 
 
 # =========================================================
@@ -2778,10 +3059,13 @@ def delete_history_item(history_id):
 # =========================================================
 
 if __name__ == "__main__":
+
     print()
 
     print("=" * 55)
+
     print("VDownloader")
+
     print("=" * 55)
 
     print(
@@ -2825,6 +3109,7 @@ if __name__ == "__main__":
     )
 
     print("=" * 55)
+
     print()
 
     app.run(
