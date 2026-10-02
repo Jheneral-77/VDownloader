@@ -17,6 +17,7 @@ import sqlite3
 import threading
 import time
 import uuid
+import os 
 import secrets
 
 
@@ -882,6 +883,7 @@ def get_analytics_stats():
                 "retry": event_counts.get(
                     "retry", 0
                 )
+                
             }
         }
 
@@ -992,6 +994,11 @@ def get_ydl_options():
                 "path": NODE_PATH
             }
         }
+
+    cookies_file = "/data/youtube_cookies.txt"
+
+    if os.path.exists(cookies_file):
+        options["cookiefile"] = cookies_file
 
     return options
 
